@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       amount: PRICE,
       currency: "IDR",
       status: "pending",
-      scalev_transaction_id: null,
+      scalev_transaction_id: `pending_${payment_id}`,
     });
 
     if (paymentError) {
