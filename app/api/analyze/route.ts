@@ -333,7 +333,7 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error("Insert error:", insertError);
-      return Response.json({ error: "Gagal menyimpan analisa" }, { status: 500 });
+      return Response.json({ error: `Gagal menyimpan analisa: ${insertError.message} (code: ${insertError.code})` }, { status: 500 });
     }
 
     const fullContent = generateAnalysis(name, cv_text, linkedin_url || null);
