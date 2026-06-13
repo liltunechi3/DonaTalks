@@ -37,72 +37,27 @@ interface LinkedInProfile {
   recommendations: unknown[];
 }
 
-// Fallback: parse OG meta tags from LinkedIn public page (no API key needed)
-async function fetchLinkedInOG(linkedinUrl: string): Promise<Partial<LinkedInProfile> | null> {
-  try {
-    const res = await fetch(linkedinUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; DonaTalks/1.0; +https://donatalks.app)",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return null;
-    const html = await res.text();
-
-    const ogTitle = html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i)?.[1] ?? "";
-    const ogDesc = html.match(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/i)?.[1] ?? "";
-    const ogImage = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i)?.[1] ?? "";
-
-    // og:title is usually "Name - Headline | LinkedIn" or "Name | LinkedIn"
-    const headlineMatch = ogTitle.match(/^[^-|]+-\s*(.+?)\s*\|/);
-    const headline = headlineMatch ? headlineMatch[1].trim() : null;
-    const hasPhoto = !!ogImage && !ogImage.includes("ghost");
-
-    return {
-      headline,
-      summary: ogDesc || null,
-      profile_pic_url: hasPhoto ? ogImage : null,
-      background_cover_image_url: null,
-      connections: null,
-      follower_count: null,
-      skills: [],
-      experiences: [],
-      education: [],
-      certifications: [],
-      recommendations: [],
-    };
-  } catch (err) {
-    console.error("LinkedIn OG fetch error:", err);
-    return null;
-  }
-}
-
 async function fetchLinkedInProfile(linkedinUrl: string): Promise<LinkedInProfile | null> {
   const proxycurlKey = process.env.PROXYCURL_API_KEY;
+  if (!proxycurlKey) return null; // No key = no data, analysis uses checklist mode
 
-  // Try Proxycurl first (full data)
-  if (proxycurlKey) {
-    try {
-      const res = await fetch(
-        `https://nubela.co/proxycurl/api/v2/linkedin?url=${encodeURIComponent(linkedinUrl)}&skills=include&extra=include`,
-        {
-          headers: { Authorization: `Bearer ${proxycurlKey}` },
-          signal: AbortSignal.timeout(15000),
-        }
-      );
-      if (res.ok) {
-        return (await res.json()) as LinkedInProfile;
+  try {
+    const res = await fetch(
+      `https://nubela.co/proxycurl/api/v2/linkedin?url=${encodeURIComponent(linkedinUrl)}&skills=include&extra=include`,
+      {
+        headers: { Authorization: `Bearer ${proxycurlKey}` },
+        signal: AbortSignal.timeout(15000),
       }
+    );
+    if (!res.ok) {
       console.error("Proxycurl error:", res.status);
-    } catch (err) {
-      console.error("Proxycurl fetch error:", err);
+      return null;
     }
+    return (await res.json()) as LinkedInProfile;
+  } catch (err) {
+    console.error("Proxycurl fetch error:", err);
+    return null;
   }
-
-  // Fallback: OG meta tags (free, limited data)
-  const og = await fetchLinkedInOG(linkedinUrl);
-  return og as LinkedInProfile | null;
 }
 
 // ── CV Extraction Helpers ─────────────────────────────────────────────────────
@@ -586,6 +541,85 @@ function generateAnalysis(name: string, cvText: string, linkedinUrl: string | nu
       ? `Sebagai mahasiswa aktif, pengalaman organisasi dan proyek akademik kamu adalah modal utama yang harus dikemas dengan benar.`
       : `Pengalaman yang kamu miliki adalah modal nyata — tugasnya sekarang adalah memastikan semuanya dikomunikasikan dengan format yang benar kepada rekruter.`;
 
+  // LinkedIn AREA B section — computed separately to avoid nested template literal issues
+  const exampleHeadline = `${skills.length > 0 ? skills[0] : industry.split(" ")[0]} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "| Fresh Graduate" : "Professional"} | ${skills.length > 1 ? skills.slice(0, 2).join(" & ") : industry.split(" ")[0]} | Open to Opportunities`;
+
+  let linkedInSection: string;
+  if (!hasLinkedin) {
+    linkedInSection = `TEMUAN: Tidak ada URL LinkedIn yang disertakan dalam CV ${firstName}.
+ANALISA: LinkedIn adalah mesin pencari personal brand — rekruter aktif menggunakan boolean search untuk menemukan kandidat secara proaktif. Tanpa profil publik, kamu tidak ada di radar mereka.
+DAMPAK: Kandidat tanpa LinkedIn kehilangan 70%+ peluang dari rekruter yang mencari secara aktif.
+REKOMENDASI: Buat profil LinkedIn hari ini. Gunakan nama lengkap persis seperti di CV. Headline langsung: "${exampleHeadline}"
+PRIORITAS: HIGH
+
+TEMUAN: Lima area wajib dioptimalkan segera setelah profil dibuat: headline, foto profil, banner, bagian About, dan Skills section.
+ANALISA: Profil LinkedIn yang tidak dioptimalkan sama buruknya dengan tidak punya profil — rekruter yang mengklik akan langsung keluar jika tidak ada isi yang menarik.
+DAMPAK: Profil kosong atau setengah jadi memberi kesan negatif dan ketidakseriusan.
+REKOMENDASI: Selesaikan semua 5 area dalam satu sesi 2–3 jam. Gunakan CV sebagai bahan dasar, adaptasikan ke format dan tone LinkedIn.
+PRIORITAS: HIGH`;
+  } else if (linkedInProfile) {
+    const liHeadline = linkedInProfile.headline || "(kosong)";
+    const headlineNote = !linkedInProfile.headline
+      ? "Headline kosong — ini yang pertama dilihat rekruter di search result."
+      : linkedInProfile.headline.length < 40
+      ? `Hanya ${linkedInProfile.headline.length} karakter — belum memaksimalkan 220 karakter yang tersedia.`
+      : linkedInProfile.headline.includes("|") || linkedInProfile.headline.includes("·")
+      ? "Sudah menggunakan separator, tapi perlu dicek apakah mengkomunikasikan nilai nyata atau hanya jabatan."
+      : "Perlu dioptimalkan dengan keyword yang lebih spesifik.";
+
+    const aboutStatus = linkedInProfile.summary
+      ? `sudah diisi — *"${linkedInProfile.summary.slice(0, 150)}${linkedInProfile.summary.length > 150 ? "..." : ""}"*. Perlu dicek kekuatan hook di kalimat pertama.`
+      : "**KOSONG** — kesempatan terbesar yang belum dimanfaatkan.";
+
+    const photoStatus = linkedInProfile.profile_pic_url ? "terdeteksi ✓" : "tidak terdeteksi — perlu dicek apakah sudah dipasang dan dipublikasikan";
+    const bannerStatus = linkedInProfile.background_cover_image_url ? "terdeteksi ✓ — pastikan on-brand" : "tidak terdeteksi — kemungkinan masih default biru LinkedIn";
+
+    const skillsBlock = linkedInProfile.skills && linkedInProfile.skills.length > 0
+      ? `TEMUAN: Skills terdaftar di LinkedIn: **${linkedInProfile.skills.slice(0, 8).join(", ")}**${linkedInProfile.skills.length > 8 ? ` (+${linkedInProfile.skills.length - 8} lainnya)` : ""}. ${skills.length > 0 ? `Skills di CV: ${skills.slice(0, 4).join(", ")}.` : ""}
+ANALISA: Rekruter sering membandingkan LinkedIn dan CV. Inkonsistensi menciptakan keraguan tentang mana yang akurat.
+DAMPAK: Skills yang tidak selaras antara dua platform bisa menurunkan kredibilitas tanpa disadari.
+REKOMENDASI: Sinkronkan skills di CV dan LinkedIn. Prioritaskan keyword yang sering muncul di job description target di ${industry}.
+PRIORITAS: MEDIUM`
+      : `TEMUAN: Skills di LinkedIn perlu diisi atau diverifikasi agar selaras dengan CV.
+ANALISA: Skills section di LinkedIn adalah keyword yang dibaca rekruter saat boolean search. Tanpa ini, profil tidak terindeks untuk pencarian spesifik.
+DAMPAK: Skills kosong = tidak muncul di pencarian spesifik = kehilangan peluang yang bahkan tidak disadari.
+REKOMENDASI: Tambahkan minimal 10 skill: ${skills.length > 0 ? skills.slice(0, 6).join(", ") : "tool teknis yang kamu kuasai"}. Minta endorsement dari 3+ koneksi.
+PRIORITAS: MEDIUM`;
+
+    linkedInSection = `TEMUAN: Headline LinkedIn ${firstName} saat ini: **"${liHeadline}"**. ${headlineNote}
+ANALISA: Headline muncul di search result LinkedIn. Formula efektif: [Keahlian Utama] | [Nilai yang Kamu Bawa] | [Target Industri].
+DAMPAK: Profil dengan headline yang dioptimalkan mendapat 40% lebih banyak penampilan di pencarian rekruter.
+REKOMENDASI: Ganti${linkedInProfile.headline ? ` dari "${linkedInProfile.headline}"` : ""} menjadi: "${exampleHeadline}"
+PRIORITAS: HIGH
+
+TEMUAN: Bagian About: ${aboutStatus}
+ANALISA: Bagian About adalah 2.600 karakter real estate terbaik di LinkedIn. Kalimat pembuka menentukan apakah rekruter mengklik atau scroll.
+DAMPAK: About yang kosong atau hook yang lemah membuat rekruter tidak bisa membedakan kamu dari ratusan kandidat lain.
+REKOMENDASI: Tulis About 4 blok: **(1) Hook** — 1–2 kalimat kuat sebelum "lihat selengkapnya"${university ? ` (hubungkan background ${university} dengan dampak nyata)` : ""}; **(2) Perjalanan singkat**; **(3) Keahlian inti** — ${skills.length > 0 ? skills.slice(0, 4).join(", ") : "tool teknis utama"}; **(4) CTA** — apa yang kamu cari dan cara dihubungi.
+PRIORITAS: HIGH
+
+TEMUAN: Foto profil: ${photoStatus}. Banner: ${bannerStatus}.
+ANALISA: Profil dengan foto profesional mendapat 21x lebih banyak dilihat. Banner adalah iklan gratis 1584x396px yang mayoritas pengguna biarkan default.
+DAMPAK: Kesan pertama terjadi secara visual dalam <1 detik — sebelum rekruter membaca satu kata dari headline.
+REKOMENDASI: Foto: latar bersih, pakaian sesuai ${industry}, ekspresi natural, ukuran min 400x400px. Banner: buat di Canva dengan tagline dan ${skills.length > 0 ? skills.slice(0, 2).join(" / ") : "keahlian utama"}, ukuran 1584x396px.
+PRIORITAS: MEDIUM
+
+${skillsBlock}`;
+  } else {
+    // Has LinkedIn URL but no profile data (no Proxycurl key)
+    linkedInSection = `TEMUAN: URL LinkedIn sudah disertakan (${linkedinUrl}). Audit profil berdasarkan checklist standar karena data profil tidak dapat diakses secara otomatis.
+ANALISA: Headline, About, foto, banner, dan Skills section adalah lima area yang menentukan apakah rekruter mau mengklik profil kamu di search result.
+DAMPAK: Profil LinkedIn yang tidak dioptimalkan sama buruknya dengan tidak punya profil — rekruter yang mengklik tanpa menemukan isi yang menarik akan langsung keluar.
+REKOMENDASI: Buka profil LinkedIn kamu sekarang dan cek satu per satu: (1) Headline — sudah pakai formula [Keahlian] | [Nilai] | [Industri]? Contoh: "${exampleHeadline}" (2) About — sudah ada hook kuat di 2 kalimat pertama? (3) Foto — profesional dan latar bersih? (4) Banner — bukan default biru LinkedIn? (5) Skills — minimal 10 skill relevan sudah terdaftar?
+PRIORITAS: HIGH
+
+TEMUAN: Sinkronisasi antara CV dan profil LinkedIn perlu diverifikasi secara manual.
+ANALISA: Rekruter sering membuka CV dan LinkedIn secara bersamaan. Inkonsistensi — nama jabatan berbeda, periode kerja berbeda, skill tidak selaras — menciptakan keraguan tentang kredibilitas.
+DAMPAK: Inkonsistensi kecil sekalipun bisa menjadi alasan penolakan yang tidak pernah dikomunikasikan ke kandidat.
+REKOMENDASI: Buka CV dan LinkedIn side by side. Pastikan: nama perusahaan identik, periode kerja sama, deskripsi peran konsisten, dan skills di kedua platform selaras. ${skills.length > 0 ? `Tambahkan ${skills.slice(0, 4).join(", ")} ke LinkedIn Skills jika belum ada.` : ""}
+PRIORITAS: MEDIUM`;
+  }
+
   return `# RINGKASAN EKSEKUTIF
 
 ${firstName}, ${openingCtxStr}
@@ -652,39 +686,7 @@ PRIORITAS: HIGH
 
 ## AREA B — Audit Profil LinkedIn
 
-${!hasLinkedin ? `TEMUAN: Tidak ada URL LinkedIn yang disertakan dalam CV ${firstName}. Ini adalah red flag pertama yang terlihat oleh rekruter modern bahkan sebelum membaca satu kalimat pengalaman kamu.
-ANALISA: LinkedIn bukan sekadar CV online — ini mesin pencari personal brand. Rekruter aktif menggunakan boolean search ("${skills.length > 0 ? skills[0] : industry.split(" ")[0]} ${university ? university.split(" ").slice(-1)[0] : "Jakarta"}") untuk menemukan kandidat. Tanpa profil, kamu tidak ada di radar mereka.
-DAMPAK: Kandidat tanpa LinkedIn kehilangan 70%+ peluang dari rekruter yang mencari secara aktif — bahkan sebelum melamar satu posisi pun.
-REKOMENDASI: Buat profil LinkedIn hari ini. Gunakan nama lengkap persis seperti di CV. Ini langkah paling urgent sebelum melamar ke posisi manapun.
-PRIORITAS: HIGH
-
-TEMUAN: Tanpa profil LinkedIn, tidak ada data lebih lanjut yang bisa diaudit.
-ANALISA: Setelah profil dibuat, lima area yang perlu langsung dioptimalkan: (1) headline, (2) foto profil, (3) banner, (4) bagian About/Ringkasan, dan (5) Skills section yang selaras dengan CV.
-DAMPAK: Profil LinkedIn yang tidak dioptimalkan sama buruknya dengan tidak punya profil sama sekali — rekruter yang mengklik akan langsung keluar.
-REKOMENDASI: Gunakan formula headline: [Keahlian Utama] | [Nilai yang Kamu Bawa] | [Target Industri/Audiens]. Contoh: "${skills.length > 0 ? skills[0] : industry.split(" ")[0]} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "Student" : "Professional"} | ${industry.split(" ")[0]} | Open to Opportunities"
-PRIORITAS: HIGH` : `TEMUAN: ${linkedInProfile?.headline ? `Headline LinkedIn ${firstName} saat ini: **"${linkedInProfile.headline}"** — ` : `Headline LinkedIn ${firstName} `}${linkedInProfile?.headline ? (linkedInProfile.headline.includes("|") || linkedInProfile.headline.includes("·") ? "menggunakan separator yang umum dipakai, tapi perlu dicek apakah sudah mengkomunikasikan nilai nyata atau hanya jabatan." : linkedInProfile.headline.length < 40 ? "terlalu pendek dan belum memaksimalkan 220 karakter yang tersedia untuk keyword dan positioning." : "ada, tapi perlu diaudit apakah sudah dioptimalkan untuk searchability rekruter.") : "tidak terdeteksi — kemungkinan masih menggunakan headline default atau belum diisi."}
-ANALISA: Headline adalah bagian pertama yang dibaca rekruter saat menemukan profil kamu di search result. Formula yang efektif: [Keahlian Utama] | [Nilai yang Kamu Bawa] | [Target Industri] — bukan sekadar jabatan atau nama perusahaan.
-DAMPAK: Headline yang tidak dioptimalkan membuat kamu tidak muncul di boolean search rekruter. Profil dengan headline keyword-rich mendapat 40% lebih banyak penampilan di search.
-REKOMENDASI: ${linkedInProfile?.headline ? `Ganti dari "${linkedInProfile.headline}" menjadi formula yang lebih kuat. Contoh untuk ${firstName}: "${skills.length > 0 ? skills[0] : industry.split(" ")[0]} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "| Fresh Graduate" : "Professional"} | ${skills.length > 1 ? skills.slice(0, 2).join(" & ") : industry.split(" ")[0]} | ${industry.split(" ")[0]} — Open to Opportunities"` : `Isi headline dengan formula: [Keahlian Utama] | [Nilai yang Kamu Bawa] | [Target Industri]. Contoh untuk ${firstName}: "${skills.length > 0 ? skills[0] : industry.split(" ")[0]} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "| Fresh Graduate" : "Professional"} | ${industry.split(" ")[0]} — Open to Opportunities"`}
-PRIORITAS: HIGH
-
-TEMUAN: ${linkedInProfile?.summary ? `Bagian About/Ringkasan LinkedIn ${firstName} sudah diisi. Kontennya: *"${linkedInProfile.summary.slice(0, 120)}${linkedInProfile.summary.length > 120 ? "..."  : ""}"* — ` : `Bagian About/Ringkasan LinkedIn ${firstName} `}${linkedInProfile?.summary ? "ada tapi perlu diaudit apakah dimulai dengan hook yang kuat sebelum tombol 'lihat selengkapnya'." : "kemungkinan kosong atau belum terdeteksi — ini adalah kesempatan emas yang terbuang."}
-ANALISA: Bagian About adalah 2.600 karakter real estate terbaik di LinkedIn. Kalimat pembuka menentukan apakah orang mengklik "lihat selengkapnya" atau scroll — dan mayoritas rekruter tidak klik kalau kalimat pertama tidak menarik.
-DAMPAK: About yang kosong atau generik membuat rekruter tidak bisa membedakan kamu dari ratusan kandidat lain dengan background serupa.
-REKOMENDASI: Tulis About dengan 4 blok: **(1) Hook** — 1–2 kalimat pembuka yang bisa berdiri sendiri sebelum "lihat selengkapnya" (hubungkan${university ? ` background ${university}` : " latar belakangmu"} dengan dampak nyata); **(2) Cerita perjalanan** singkat yang jujur; **(3) Keahlian inti** — ${skills.length > 0 ? skills.slice(0, 4).join(", ") : "tool dan kemampuan teknis utama"}; **(4) CTA** — apa yang sedang kamu cari dan cara terbaik menghubungi kamu.
-PRIORITAS: HIGH
-
-TEMUAN: ${linkedInProfile?.profile_pic_url ? `Foto profil LinkedIn ${firstName} terdeteksi — ` : `Foto profil LinkedIn ${firstName} `}${linkedInProfile?.profile_pic_url ? "sudah ada. Pastikan foto ini profesional: latar bersih, pakaian appropriate, ekspresi natural." : "tidak terdeteksi atau mungkin tidak dipublikasikan. Ini langsung mengurangi kredibilitas profil."}${linkedInProfile?.background_cover_image_url ? " Banner juga terdeteksi — pastikan sudah on-brand dan berisi tagline atau keahlian utama." : " Banner LinkedIn belum terdeteksi — kemungkinan masih menggunakan default biru bawaan LinkedIn."}
-ANALISA: Profil dengan foto profesional mendapat 21x lebih banyak dilihat. Banner adalah iklan gratis seluas 1584x396px yang hampir semua orang biarkan default.
-DAMPAK: Kesan pertama terjadi secara visual dalam 0,3 detik — sebelum rekruter membaca satu kata pun dari headline kamu.
-REKOMENDASI: Foto: latar bersih (putih/abu), pakaian sesuai industri ${industry}, senyum natural, ukuran min 400x400px. Banner: buat di Canva, warna konsisten dengan personal brand, tambahkan tagline dan 2–3 keahlian utama${skills.length > 0 ? ` (${skills.slice(0, 2).join(", ")})` : ""}.
-PRIORITAS: MEDIUM
-
-${linkedInProfile?.skills && linkedInProfile.skills.length > 0 ? `TEMUAN: Skills yang terdaftar di LinkedIn ${firstName}: **${linkedInProfile.skills.slice(0, 8).join(", ")}**${linkedInProfile.skills.length > 8 ? `, dan ${linkedInProfile.skills.length - 8} lainnya` : ""}.
-ANALISA: ${skills.length > 0 ? `Dibanding skills yang terdeteksi di CV (${skills.slice(0, 4).join(", ")}), ada ${linkedInProfile.skills.filter(s => !skills.some(cs => cs.toLowerCase().includes(s.toLowerCase()))).slice(0, 3).join(", ") || "beberapa skill"} di LinkedIn yang tidak muncul di CV — atau sebaliknya. Kedua platform harus konsisten.` : "Pastikan skills di LinkedIn selaras dengan yang ada di CV agar rekruter mendapat gambaran yang konsisten di semua channel."}
-DAMPAK: Inkonsistensi antara CV dan LinkedIn membuat rekruter ragu — mana yang akurat? Ini bisa menurunkan kredibilitas kamu tanpa disadari.
-REKOMENDASI: Sinkronkan skills di CV dan LinkedIn. Tambahkan${skills.filter(s => !linkedInProfile.skills.some(ls => ls.toLowerCase().includes(s.toLowerCase()))).slice(0, 3).length > 0 ? ` ${skills.filter(s => !linkedInProfile.skills.some(ls => ls.toLowerCase().includes(s.toLowerCase()))).slice(0, 3).join(", ")} ke LinkedIn Skills` : " semua skill teknis yang kamu kuasai ke LinkedIn Skills section"}. Prioritaskan skill yang sering muncul di job description target kamu di ${industry}.
-PRIORITAS: MEDIUM` : ""}`}
+${linkedInSection}
 
 ## AREA C — Strategi: Niche, Persona, dan Positioning
 
