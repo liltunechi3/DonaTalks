@@ -744,7 +744,12 @@ export async function POST(request: NextRequest) {
     const sections = fullContent.split(/^# /m);
     let previewContent = "";
     for (const section of sections) {
-      if (section.startsWith("RINGKASAN EKSEKUTIF") || section.startsWith("KONTEKS KLIEN")) {
+      if (
+        section.startsWith("RINGKASAN EKSEKUTIF") ||
+        section.startsWith("KONTEKS KLIEN") ||
+        section.startsWith("YANG SUDAH KUAT") ||
+        section.startsWith("TEMUAN & REKOMENDASI")
+      ) {
         previewContent += "# " + section + "\n";
       }
     }
