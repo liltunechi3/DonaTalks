@@ -1,6 +1,4 @@
 import { NextRequest } from "next/server";
-import { PDFParse } from "pdf-parse";
-import mammoth from "mammoth";
 
 export const maxDuration = 30;
 
@@ -20,10 +18,14 @@ export async function POST(request: NextRequest) {
     let text = "";
 
     if (fileName.endsWith(".pdf")) {
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
+      // Use lib path to skip test-file loading at module init (serverless safe)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pdfParse = require("pdf-parse/lib/pdf-parse.js");
+      const result = await pdfParse(buffer);
       text = result.text;
     } else if (fileName.endsWith(".docx")) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mammoth = require("mammoth");
       const result = await mammoth.extractRawText({ buffer });
       text = result.value;
     } else if (fileName.endsWith(".doc")) {
