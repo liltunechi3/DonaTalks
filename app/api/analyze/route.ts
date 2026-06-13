@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { v4 as uuidv4 } from "uuid";
+import { ApifyClient } from "apify-client";
 
 export const maxDuration = 60;
 
-// ── LinkedIn Profile (Proxycurl) ──────────────────────────────────────────────
+// ── LinkedIn Profile ──────────────────────────────────────────────────────────
 
 interface LinkedInExperience {
   company: string | null;
@@ -37,27 +38,73 @@ interface LinkedInProfile {
   recommendations: unknown[];
 }
 
-async function fetchLinkedInProfile(linkedinUrl: string): Promise<LinkedInProfile | null> {
-  const proxycurlKey = process.env.PROXYCURL_API_KEY;
-  if (!proxycurlKey) return null; // No key = no data, analysis uses checklist mode
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapApifyToProfile(item: any): LinkedInProfile {
+  return {
+    full_name: item.name ?? item.fullName ?? null,
+    headline: item.headline ?? item.title ?? null,
+    summary: item.summary ?? item.about ?? item.description ?? null,
+    profile_pic_url: item.profilePicture ?? item.profilePicUrl ?? item.photo ?? null,
+    background_cover_image_url: item.backgroundImage ?? item.coverImage ?? null,
+    connections: item.connectionsCount ?? item.connections ?? null,
+    follower_count: item.followersCount ?? item.followers ?? null,
+    experiences: (item.experience ?? item.experiences ?? []).map((e: any) => ({
+      company: e.company ?? e.companyName ?? null,
+      title: e.title ?? e.position ?? null,
+      description: e.description ?? null,
+      starts_at: e.startDate ? { year: new Date(e.startDate).getFullYear(), month: new Date(e.startDate).getMonth() + 1 } : null,
+      ends_at: e.endDate ? { year: new Date(e.endDate).getFullYear(), month: new Date(e.endDate).getMonth() + 1 } : null,
+    })),
+    education: (item.education ?? []).map((e: any) => ({
+      school: e.school ?? e.schoolName ?? null,
+      degree_name: e.degree ?? e.degreeName ?? null,
+      field_of_study: e.fieldOfStudy ?? e.field ?? null,
+      starts_at: e.startDate ? { year: new Date(e.startDate).getFullYear() } : null,
+      ends_at: e.endDate ? { year: new Date(e.endDate).getFullYear() } : null,
+    })),
+    skills: (item.skills ?? []).map((s: any) => (typeof s === "string" ? s : s.name ?? s.skill ?? "")).filter(Boolean),
+    certifications: (item.certifications ?? []).map((c: any) => ({ name: typeof c === "string" ? c : c.name ?? null })),
+    recommendations: item.recommendations ?? [],
+  };
+}
 
-  try {
-    const res = await fetch(
-      `https://nubela.co/proxycurl/api/v2/linkedin?url=${encodeURIComponent(linkedinUrl)}&skills=include&extra=include`,
-      {
-        headers: { Authorization: `Bearer ${proxycurlKey}` },
-        signal: AbortSignal.timeout(15000),
+async function fetchLinkedInProfile(linkedinUrl: string): Promise<LinkedInProfile | null> {
+  const apifyToken = process.env.APIFY_API_TOKEN;
+  const proxycurlKey = process.env.PROXYCURL_API_KEY;
+
+  // Try Apify first (harvestapi/linkedin-profile-search)
+  if (apifyToken) {
+    try {
+      const client = new ApifyClient({ token: apifyToken });
+      const run = await client.actor("harvestapi/linkedin-profile-search").call(
+        { profileUrls: [linkedinUrl] },
+        { waitSecs: 30 }
+      );
+      const { items } = await client.dataset(run.defaultDatasetId).listItems();
+      if (items.length > 0) {
+        console.log("Apify LinkedIn fetched:", items[0]);
+        return mapApifyToProfile(items[0]);
       }
-    );
-    if (!res.ok) {
-      console.error("Proxycurl error:", res.status);
-      return null;
+    } catch (err) {
+      console.error("Apify fetch error:", err);
     }
-    return (await res.json()) as LinkedInProfile;
-  } catch (err) {
-    console.error("Proxycurl fetch error:", err);
-    return null;
   }
+
+  // Fallback: Proxycurl
+  if (proxycurlKey) {
+    try {
+      const res = await fetch(
+        `https://nubela.co/proxycurl/api/v2/linkedin?url=${encodeURIComponent(linkedinUrl)}&skills=include&extra=include`,
+        { headers: { Authorization: `Bearer ${proxycurlKey}` }, signal: AbortSignal.timeout(15000) }
+      );
+      if (res.ok) return (await res.json()) as LinkedInProfile;
+      console.error("Proxycurl error:", res.status);
+    } catch (err) {
+      console.error("Proxycurl fetch error:", err);
+    }
+  }
+
+  return null; // No key = checklist mode
 }
 
 // ── CV Extraction Helpers ─────────────────────────────────────────────────────
