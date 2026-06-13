@@ -58,7 +58,7 @@ export default function PaymentButton({ analysisId }: { analysisId: string }) {
             Memproses...
           </span>
         ) : (
-          "Buka Analisa Penuh — Rp 99.000 →"
+          "Buka Analisa Penuh — Rp 10.000 →"
         )}
       </button>
     </div>

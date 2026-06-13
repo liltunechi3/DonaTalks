@@ -177,7 +177,7 @@ export default async function AnalysisPage({ params }: { params: Params }) {
                   >
                     <div className="text-center mb-5">
                       <div className="font-display text-4xl font-bold" style={{ color: "#C4A35A" }}>
-                        Rp 99.000
+                        Rp 10.000
                       </div>
                       <p className="text-sm mt-1" style={{ color: "#8a9e99" }}>
                         Bayar sekali · Akses selamanya

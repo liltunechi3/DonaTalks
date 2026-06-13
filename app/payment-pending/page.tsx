@@ -71,7 +71,7 @@ function PaymentPendingContent() {
             >
               <p><strong>Payment ID:</strong> {paymentId || "-"}</p>
               <p><strong>Analysis ID:</strong> {analysisId || "-"}</p>
-              <p><strong>Jumlah:</strong> Rp 99.000</p>
+              <p><strong>Jumlah:</strong> Rp 10.000</p>
             </div>
 
             <button
@@ -85,7 +85,7 @@ function PaymentPendingContent() {
                 opacity: loading ? 0.7 : 1,
               }}
             >
-              {loading ? "Memproses..." : "✓ Simulasi Bayar Rp 99.000"}
+              {loading ? "Memproses..." : "✓ Simulasi Bayar Rp 10.000"}
             </button>
 
             <button

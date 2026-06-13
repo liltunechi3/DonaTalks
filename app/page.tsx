@@ -329,7 +329,7 @@ export default function Home() {
                 </button>
 
                 <p className="text-xs text-center" style={{ color: "#8a9e99" }}>
-                  Preview gratis. Analisa penuh Rp 99.000 — bayar hanya kalau mau buka semua.
+                  Preview gratis. Analisa penuh Rp 10.000 — bayar hanya kalau mau buka semua.
                 </p>
               </form>
             </div>
@@ -390,7 +390,7 @@ export default function Home() {
               {
                 step: "03",
                 title: "Buka Analisa Penuh",
-                desc: "Bayar Rp 99.000 sekali untuk akses semua: audit CV, rewrite siap pakai, 30 ide konten, rencana eksekusi.",
+                desc: "Bayar Rp 10.000 sekali untuk akses semua: audit CV, rewrite siap pakai, 30 ide konten, rencana eksekusi.",
               },
             ].map((s) => (
               <div key={s.step} className="text-center">
