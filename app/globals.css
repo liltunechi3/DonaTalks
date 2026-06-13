@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1E3832;
+  --color-primary-dark: #152b26;
+  --color-primary-light: #2c4f45;
+  --color-gold: #C4A35A;
+  --color-gold-light: #d4b878;
+  --color-cream: #F5F0E8;
+  --color-soft: #F8F6F1;
+  --color-muted: #8a9e99;
+  --font-display: var(--font-playfair);
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: #F8F6F1;
+  color: #1E3832;
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-playfair), 'Playfair Display', Georgia, serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #F8F6F1; }
+::-webkit-scrollbar-thumb { background: #C4A35A; border-radius: 3px; }
+
+/* Analysis content styles */
+.analysis-content h1 {
+  font-family: var(--font-playfair), Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1E3832;
+  border-bottom: 2px solid #C4A35A;
+  padding-bottom: 0.5rem;
+  margin: 2rem 0 1rem;
+}
+
+.analysis-content h2 {
+  font-family: var(--font-playfair), Georgia, serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1E3832;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.analysis-content p {
+  line-height: 1.8;
+  margin-bottom: 1rem;
+  color: #2d4a44;
+}
+
+.analysis-content strong {
+  color: #1E3832;
+  font-weight: 600;
+}
+
+.priority-high { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+.priority-medium { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+.priority-low { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
