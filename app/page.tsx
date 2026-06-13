@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 
@@ -20,16 +20,48 @@ export default function Home() {
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [cvText, setCvText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const [error, setError] = useState("");
+  const [fileName, setFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    setParsing(true);
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/parse-cv", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal membaca file");
+
+      setCvText(data.text);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Gagal membaca file. Coba lagi.");
+      setFileName("");
+    } finally {
+      setParsing(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !cvText.trim()) {
-      setError("Nama dan isi CV wajib diisi.");
+      setError("Nama dan CV wajib diisi.");
       return;
     }
     if (cvText.trim().length < 100) {
-      setError("CV terlalu pendek. Paste isi CV lengkap kamu ya.");
+      setError("CV terlalu pendek. Upload file CV atau paste teks lengkap kamu ya.");
       return;
     }
     setError("");
@@ -90,9 +122,11 @@ export default function Home() {
     <div className="min-h-screen">
       {/* HERO */}
       <section style={{ backgroundColor: "#1E3832" }} className="relative overflow-hidden">
-        <div className="absolute inset-0 opacity-5"
+        <div
+          className="absolute inset-0 opacity-5"
           style={{
-            backgroundImage: "radial-gradient(circle at 20% 80%, #C4A35A 0%, transparent 50%), radial-gradient(circle at 80% 20%, #C4A35A 0%, transparent 50%)",
+            backgroundImage:
+              "radial-gradient(circle at 20% 80%, #C4A35A 0%, transparent 50%), radial-gradient(circle at 80% 20%, #C4A35A 0%, transparent 50%)",
           }}
         />
         <div className="relative max-w-5xl mx-auto px-6 pt-16 pb-24">
@@ -107,20 +141,28 @@ export default function Home() {
               </p>
             </div>
 
-            <h1 className="font-display text-4xl md:text-5xl font-bold leading-tight mb-6" style={{ color: "#F5F0E8" }}>
-              Dari CV yang{" "}
-              <span style={{ color: "#C4A35A" }}>Padat Prestasi</span>
-              <br />
-              Menjadi Personal Brand
-              <br />
-              yang <span style={{ color: "#C4A35A" }}>Kepake.</span>
+            <h1
+              className="font-display text-4xl md:text-5xl font-bold leading-tight mb-5"
+              style={{ color: "#F5F0E8" }}
+            >
+              CV &amp; Personal Brand{" "}
+              <span style={{ color: "#C4A35A" }}>Analysis</span>
             </h1>
 
-            <p className="text-lg max-w-2xl mx-auto leading-relaxed" style={{ color: "#8a9e99" }}>
-              Audit mendalam CV &amp; personal branding-mu oleh AI — dengan gaya konsultan nyata,
-              bukan saran generik. Preview gratis,{" "}
-              <span style={{ color: "#C4A35A" }}>analisa penuh Rp 99.000.</span>
+            <p className="text-base md:text-lg max-w-2xl mx-auto leading-relaxed mb-3" style={{ color: "#c8d8d5" }}>
+              Analisa mendalam CV, pengalaman, LinkedIn, dan positioning personal brand.
             </p>
+            <p className="text-sm max-w-xl mx-auto leading-relaxed mb-5" style={{ color: "#8a9e99" }}>
+              Temukan kelebihan yang belum terlihat, review detail, celah yang menghambat kariermu,
+              dan strategi membangun citra profesional yang lebih kuat.
+            </p>
+
+            <div
+              className="inline-block px-5 py-2 rounded-full text-sm font-semibold"
+              style={{ backgroundColor: "#C4A35A20", color: "#C4A35A", border: "1px solid #C4A35A50" }}
+            >
+              Dapatkan laporan gratis
+            </div>
           </div>
 
           {/* FORM */}
@@ -131,6 +173,7 @@ export default function Home() {
               </h2>
 
               <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Name */}
                 <div>
                   <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
                     Nama Lengkap *
@@ -141,17 +184,72 @@ export default function Home() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Contoh: Maritsa Aurelia Nismara"
                     className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all"
-                    style={{
-                      borderColor: "#d4c9b0",
-                      backgroundColor: "#fff",
-                      color: "#1E3832",
-                    }}
+                    style={{ borderColor: "#d4c9b0", backgroundColor: "#fff", color: "#1E3832" }}
                     onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
                     onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
                     required
                   />
                 </div>
 
+                {/* CV File Upload */}
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
+                    Upload CV *{" "}
+                    <span className="font-normal" style={{ color: "#8a9e99" }}>
+                      (PDF atau DOCX)
+                    </span>
+                  </label>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={parsing}
+                    className="w-full py-4 rounded-xl border-2 border-dashed text-sm font-medium transition-all"
+                    style={{
+                      borderColor: fileName ? "#C4A35A" : "#d4c9b0",
+                      backgroundColor: fileName ? "#C4A35A10" : "#fff",
+                      color: fileName ? "#1E3832" : "#8a9e99",
+                      cursor: parsing ? "wait" : "pointer",
+                    }}
+                  >
+                    {parsing ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Membaca file...
+                      </span>
+                    ) : fileName ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span>✓</span>
+                        <span className="truncate max-w-xs">{fileName}</span>
+                        <span style={{ color: "#8a9e99", fontSize: "0.75rem" }}>(ganti file)</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <span>📎</span>
+                        <span>Pilih file CV — PDF atau DOCX</span>
+                      </span>
+                    )}
+                  </button>
+
+                  {cvText && !parsing && (
+                    <p className="text-xs mt-1" style={{ color: "#5a7a74" }}>
+                      ✓ {cvText.length.toLocaleString()} karakter berhasil dibaca
+                    </p>
+                  )}
+                </div>
+
+                {/* LinkedIn URL */}
                 <div>
                   <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
                     LinkedIn URL{" "}
@@ -165,40 +263,35 @@ export default function Home() {
                     onChange={(e) => setLinkedinUrl(e.target.value)}
                     placeholder="https://linkedin.com/in/username"
                     className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all"
-                    style={{
-                      borderColor: "#d4c9b0",
-                      backgroundColor: "#fff",
-                      color: "#1E3832",
-                    }}
+                    style={{ borderColor: "#d4c9b0", backgroundColor: "#fff", color: "#1E3832" }}
                     onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
                     onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
-                    Isi CV *
-                  </label>
-                  <textarea
-                    value={cvText}
-                    onChange={(e) => setCvText(e.target.value)}
-                    placeholder="Paste isi CV kamu di sini — mulai dari summary, pengalaman, pendidikan, hingga prestasi. Semakin lengkap, semakin tajam analisanya."
-                    rows={10}
-                    className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all resize-y"
-                    style={{
-                      borderColor: "#d4c9b0",
-                      backgroundColor: "#fff",
-                      color: "#1E3832",
-                      lineHeight: "1.7",
-                    }}
-                    onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
-                    onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
-                    required
-                  />
-                  <p className="text-xs mt-1" style={{ color: "#8a9e99" }}>
-                    {cvText.length > 0 && `${cvText.length} karakter`}
-                  </p>
-                </div>
+                {/* CV text fallback */}
+                {!fileName && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1" style={{ color: "#8a9e99" }}>
+                      Atau paste teks CV langsung
+                    </label>
+                    <textarea
+                      value={cvText}
+                      onChange={(e) => setCvText(e.target.value)}
+                      placeholder="Paste isi CV kamu di sini — summary, pengalaman, pendidikan, prestasi..."
+                      rows={6}
+                      className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all resize-y"
+                      style={{
+                        borderColor: "#d4c9b0",
+                        backgroundColor: "#fff",
+                        color: "#1E3832",
+                        lineHeight: "1.7",
+                      }}
+                      onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
+                      onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
+                    />
+                  </div>
+                )}
 
                 {error && (
                   <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>
@@ -208,18 +301,18 @@ export default function Home() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || parsing}
                   className="w-full py-4 rounded-xl font-semibold text-base transition-all disabled:opacity-70"
                   style={{
-                    backgroundColor: loading ? "#8a9e99" : "#C4A35A",
+                    backgroundColor: loading || parsing ? "#8a9e99" : "#C4A35A",
                     color: "#1E3832",
-                    cursor: loading ? "not-allowed" : "pointer",
+                    cursor: loading || parsing ? "not-allowed" : "pointer",
                   }}
                   onMouseEnter={(e) => {
-                    if (!loading) (e.target as HTMLButtonElement).style.backgroundColor = "#d4b878";
+                    if (!loading && !parsing) (e.target as HTMLButtonElement).style.backgroundColor = "#d4b878";
                   }}
                   onMouseLeave={(e) => {
-                    if (!loading) (e.target as HTMLButtonElement).style.backgroundColor = "#C4A35A";
+                    if (!loading && !parsing) (e.target as HTMLButtonElement).style.backgroundColor = "#C4A35A";
                   }}
                 >
                   {loading ? (
@@ -228,7 +321,7 @@ export default function Home() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      Sedang menganalisa CV kamu... (~30 detik)
+                      Sedang menganalisa CV kamu...
                     </span>
                   ) : (
                     "Analisa CV Saya →"
@@ -260,10 +353,7 @@ export default function Home() {
             <div
               key={i}
               className="p-6 rounded-2xl border transition-all hover:-translate-y-1"
-              style={{
-                backgroundColor: "#fff",
-                borderColor: "#e8e0d0",
-              }}
+              style={{ backgroundColor: "#fff", borderColor: "#e8e0d0" }}
             >
               <div className="text-3xl mb-4">{f.icon}</div>
               <h3 className="font-semibold mb-2" style={{ color: "#1E3832" }}>
@@ -287,15 +377,24 @@ export default function Home() {
           </div>
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              { step: "01", title: "Paste CV-mu", desc: "Salin isi CV-mu ke form di atas. Semakin lengkap, semakin tajam analisanya." },
-              { step: "02", title: "Terima Preview Gratis", desc: "Dalam ~30 detik, baca Ringkasan Eksekutif & Konteks Klien. Gratis, tanpa perlu daftar." },
-              { step: "03", title: "Buka Analisa Penuh", desc: "Bayar Rp 99.000 sekali untuk akses semua: audit CV, rewrite siap pakai, 30 ide konten, rencana eksekusi." },
+              {
+                step: "01",
+                title: "Upload CV-mu",
+                desc: "Upload file PDF atau DOCX. Teks CV langsung dibaca otomatis — tidak perlu copy-paste manual.",
+              },
+              {
+                step: "02",
+                title: "Terima Laporan Gratis",
+                desc: "Dalam hitungan detik, baca Ringkasan Eksekutif & Konteks Klien. Gratis, tanpa perlu daftar.",
+              },
+              {
+                step: "03",
+                title: "Buka Analisa Penuh",
+                desc: "Bayar Rp 99.000 sekali untuk akses semua: audit CV, rewrite siap pakai, 30 ide konten, rencana eksekusi.",
+              },
             ].map((s) => (
               <div key={s.step} className="text-center">
-                <div
-                  className="font-display text-5xl font-bold mb-4"
-                  style={{ color: "#C4A35A", opacity: 0.4 }}
-                >
+                <div className="font-display text-5xl font-bold mb-4" style={{ color: "#C4A35A", opacity: 0.4 }}>
                   {s.step}
                 </div>
                 <h3 className="font-semibold text-lg mb-2" style={{ color: "#F5F0E8" }}>
