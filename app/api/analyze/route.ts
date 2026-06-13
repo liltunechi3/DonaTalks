@@ -321,24 +321,9 @@ export async function POST(request: NextRequest) {
 
     const id = uuidv4();
 
-    const { error: insertError } = await supabaseServer
-      .from("analyses")
-      .insert({
-        id,
-        cv_text,
-        linkedin_url: linkedin_url || null,
-        session_id: session_id || uuidv4(),
-        is_paid: false,
-      });
-
-    if (insertError) {
-      console.error("Insert error:", insertError);
-      return Response.json({ error: `Gagal menyimpan analisa: ${insertError.message} (code: ${insertError.code})` }, { status: 500 });
-    }
-
+    // Generate content first, then insert everything in one shot
     const fullContent = generateAnalysis(name, cv_text, linkedin_url || null);
 
-    // Extract preview: first 2 sections (RINGKASAN EKSEKUTIF + KONTEKS KLIEN)
     const sections = fullContent.split(/^# /m);
     let previewContent = "";
     for (const section of sections) {
@@ -350,17 +335,21 @@ export async function POST(request: NextRequest) {
       previewContent = fullContent.substring(0, 1500) + "\n\n*...*";
     }
 
-    const { error: updateError } = await supabaseServer
+    const { error: insertError } = await supabaseServer
       .from("analyses")
-      .update({
+      .insert({
+        id,
+        cv_text,
+        linkedin_url: linkedin_url || null,
+        session_id: session_id || uuidv4(),
+        is_paid: false,
         preview_content: previewContent.trim(),
         full_content: fullContent,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
+      });
 
-    if (updateError) {
-      console.error("Update error:", updateError);
+    if (insertError) {
+      console.error("Insert error:", insertError);
+      return Response.json({ error: `Gagal menyimpan analisa: ${insertError.message} (code: ${insertError.code})` }, { status: 500 });
     }
 
     return Response.json({ id });
