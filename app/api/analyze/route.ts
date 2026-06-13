@@ -406,7 +406,14 @@ function generateAnalysis(name: string, cvText: string, linkedinUrl: string | nu
   const careerLevel = detectCareerLevel(cvText);
   const industry = detectIndustry(cvText);
   const hasLinkedin = !!linkedinUrl;
-  const cvLength = cvText.length;
+
+  // CV / LinkedIn completeness
+  const cvStatus = cvText.length > 3000 ? "LENGKAP" : cvText.length > 1000 ? "TERBATAS" : "BELUM ADA";
+  const liStatus = !hasLinkedin
+    ? "BELUM ADA"
+    : linkedInProfile
+    ? "TERBATAS (data otomatis)"
+    : "TERBATAS (URL ada, belum diverifikasi)";
 
   const levelLabel: Record<CareerLevel, string> = {
     student: "Mahasiswa / Pelajar Aktif",
@@ -416,7 +423,7 @@ function generateAnalysis(name: string, cvText: string, linkedinUrl: string | nu
     senior: "Senior Professional / People Manager (7+ Tahun)",
   };
 
-  // Build personalized context strings
+  // Build personalized strings
   const eduParts: string[] = [];
   if (university) eduParts.push(university);
   if (major) eduParts.push(major);
@@ -425,472 +432,812 @@ function generateAnalysis(name: string, cvText: string, linkedinUrl: string | nu
   const eduDesc = eduParts.length > 0 ? eduParts.join(" — ") : null;
 
   const companyDesc =
-    companies.length >= 2
-      ? `${companies[0]} dan ${companies[1]}`
-      : companies.length === 1
-      ? companies[0]
-      : null;
+    companies.length >= 2 ? `${companies[0]} dan ${companies[1]}` : companies.length === 1 ? companies[0] : null;
 
-  // Specific problems found in THEIR CV
+  // Problem list
   const problemList: string[] = [];
   if (passiveCount >= 3) {
     problemList.push(
-      `**${passiveCount} kalimat pasif ditemukan** — frasa seperti "bertanggung jawab atas", "membantu tim", dan "melakukan" muncul berulang kali di CV kamu. Rekruter mencari dampak, bukan deskripsi tugas`
+      `**${passiveCount} kalimat pasif** — frasa seperti "bertanggung jawab atas", "membantu tim", dan "melakukan" muncul berulang. Rekruter mencari dampak, bukan deskripsi tugas`
     );
   } else if (passiveCount > 0) {
     problemList.push(
-      `**${passiveCount} kalimat pasif perlu di-rewrite** — rumus dampak yang benar adalah kata kerja aksi + objek + hasil terukur + konteks`
+      `**${passiveCount} kalimat pasif perlu di-rewrite** — rumus dampak yang benar: Kata Kerja Aksi + Objek + Hasil Terukur + Konteks`
     );
   }
   if (!hasMetrics) {
     problemList.push(
-      `**Hampir tidak ada angka atau metrik** di seluruh CV kamu — tanpa data kuantitatif, rekruter tidak bisa membandingkan kontribusi kamu dengan kandidat lain`
+      `**Hampir tidak ada angka atau metrik** di seluruh CV — tanpa data kuantitatif, rekruter tidak bisa membandingkan kontribusimu dengan kandidat lain`
     );
   } else if (metricsCount < 5) {
     problemList.push(
-      `**Hanya ${metricsCount} data terukur** yang ditemukan di CV — idealnya setiap pengalaman punya minimal satu angka konkret`
+      `**Hanya ${metricsCount} data terukur** ditemukan — idealnya setiap pengalaman punya minimal satu angka konkret`
     );
   }
   if (!hasLinkedin) {
     problemList.push(
-      `**Tidak ada URL LinkedIn** yang disertakan — di tahun 2025, rekruter aktif mencari kandidat di LinkedIn sebelum membalas email`
+      `**Tidak ada URL LinkedIn** yang disertakan — di 2025, rekruter mencari kandidat di LinkedIn sebelum membalas email`
     );
   }
   if (skills.length < 4) {
     problemList.push(
-      `**Bagian Skills perlu diperkuat** — tool dan kemampuan teknis yang spesifik adalah keyword yang dibaca ATS sebelum rekruter manusia melihat CV kamu`
+      `**Bagian Skills perlu diperkuat** — tool dan kemampuan teknis spesifik adalah keyword yang dibaca ATS sebelum rekruter manusia melihat CV`
     );
   }
 
-  // Opening sentence for executive summary
-  const openingContext: string[] = [];
-  if (eduDesc) openingContext.push(`latar belakang dari ${eduDesc}`);
-  if (companyDesc) openingContext.push(`pengalaman di ${companyDesc}`);
-  if (skills.length > 0) openingContext.push(`skill seperti ${skills.slice(0, 3).join(", ")}`);
+  // Opening sentence
+  const openingParts: string[] = [];
+  if (eduDesc) openingParts.push(`latar belakang dari ${eduDesc}`);
+  if (companyDesc) openingParts.push(`pengalaman di ${companyDesc}`);
+  if (skills.length > 0) openingParts.push(`skill seperti ${skills.slice(0, 3).join(", ")}`);
   const openingCtxStr =
-    openingContext.length > 0
-      ? `Saya sudah baca CV kamu dari atas ke bawah — termasuk ${openingContext.join(", ")}. Dan ada hal yang perlu kita bicarakan serius.`
-      : `${firstName}, saya sudah baca CV kamu dari atas ke bawah. Dan ada hal yang perlu kita bicarakan serius.`;
+    openingParts.length > 0
+      ? `Saya sudah baca CV kamu dari atas ke bawah — termasuk ${openingParts.join(", ")}. Ada hal penting yang perlu kita bahas sekarang.`
+      : `Saya sudah baca CV kamu dari atas ke bawah. Ada hal penting yang perlu kita bahas.`;
 
-  // SEBELUM/SESUDAH pairs — use actual CV bullets first
-  const sebelumSesudah: string[] = [];
-  const usedBullets = weakBullets.slice(0, 3);
-  for (const b of usedBullets) {
-    sebelumSesudah.push(`SEBELUM: "${b}"\n\nSESUDAH: "${transformWeakBullet(b)}"`);
-  }
-
-  // Fill remaining slots with generic examples (different from extracted)
-  const genericPairs = [
-    {
-      before: "Bertanggung jawab atas pembuatan konten media sosial organisasi dan membantu koordinasi acara",
-      after: `Memproduksi konten media sosial secara konsisten untuk [nama organisasi] — [tambahkan: berapa total post? berapa % pertumbuhan followers atau engagement dalam berapa bulan?]`,
-    },
-    {
-      before: "Membantu tim dalam pelaksanaan program kerja divisi dan mengikuti rapat mingguan",
-      after: `Mengkoordinasikan [X] anggota tim dalam eksekusi [X] program kerja divisi — [tambahkan: berapa program selesai tepat waktu? berapa % target yang tercapai?]`,
-    },
-    {
-      before: "Melakukan presentasi dan membuat laporan untuk keperluan akademik dan organisasi",
-      after: `Mempresentasikan hasil analisis kepada audiens [X orang] dan menghasilkan laporan yang digunakan untuk [tujuan konkret] — [tambahkan: apa dampak atau keputusan yang dihasilkan?]`,
-    },
-    {
-      before: "Berpartisipasi dalam kepanitiaan dan membantu pelaksanaan acara",
-      after: `Mengkoordinasikan [X] divisi kepanitiaan untuk acara [nama] dengan [X] peserta — [tambahkan: budget yang dikelola? tingkat kepuasan peserta? pencapaian vs target?]`,
-    },
-    {
-      before: "Terlibat dalam proyek kelompok sebagai anggota tim dan belajar cara kerja profesional",
-      after: `Berkontribusi sebagai [peran spesifik] dalam proyek [bidang/nama], menghasilkan [deliverable konkret] — [tambahkan: timeline proyek, dampak terukur, atau pengakuan yang diterima]`,
-    },
-  ];
-
-  let gIdx = 0;
-  while (sebelumSesudah.length < 5 && gIdx < genericPairs.length) {
-    const ex = genericPairs[gIdx];
-    const isDup = usedBullets.some((b) =>
-      b.toLowerCase().startsWith(ex.before.toLowerCase().slice(0, 25))
-    );
-    if (!isDup) sebelumSesudah.push(`SEBELUM: "${ex.before}"\n\nSESUDAH: "${ex.after}"`);
-    gIdx++;
-  }
-
-  // Score computation
-  const liScore = hasLinkedin ? (skills.length >= 5 ? 9 : 7) : 4;
-  const cvScore = hasMetrics ? (metricsCount >= 5 ? 14 : 11) : 7;
-  const nicheScore = industry !== "Profesional" ? 7 : 5;
+  // Scores
+  const liScore = hasLinkedin ? (linkedInProfile ? 12 : 9) : 4;
+  const cvScore = hasMetrics ? (metricsCount >= 5 ? 14 : 10) : 6;
+  const nicheScore = industry !== "Profesional" ? 8 : 5;
   const contentScore = 4;
-  const qualScore = skills.length >= 5 ? 13 : skills.length >= 2 ? 10 : 7;
-  const metricScore = hasMetrics ? (metricsCount >= 5 ? 8 : 6) : 3;
+  const qualScore = skills.length >= 5 ? 13 : skills.length >= 2 ? 10 : 6;
+  const metricScore = hasMetrics ? (metricsCount >= 5 ? 9 : 6) : 3;
   const totalScore = liScore + cvScore + nicheScore + contentScore + qualScore + metricScore;
 
-  // Content ideas tailored to industry
-  const industryContentIdeas: Record<string, string[]> = {
-    "Teknologi & Software": [
-      `"Hal yang tidak diajarkan di bootcamp/kuliah tentang dunia ${industry} — dari pengalaman langsung saya"`,
-      `"Framework debugging yang selalu saya pakai saat menemukan bug yang tidak masuk akal"`,
-      `"Kenapa saya akhirnya memilih [tech stack kamu] dibanding alternatifnya — analisis jujur"`,
-    ],
-    "Marketing & Komunikasi": [
-      `"Strategi konten yang saya pakai untuk meningkatkan engagement [platform] — dengan data nyata"`,
-      `"Perbedaan antara marketing yang terasa spam dan yang benar-benar convert — dari pengalaman saya"`,
-      `"Hot take: follower count bukan metrik kesuksesan yang relevan — ini yang lebih penting"`,
-    ],
-    "Keuangan & Perbankan": [
-      `"3 kesalahan finansial yang paling sering saya lihat sebagai [peran kamu] — dan cara menghindarinya"`,
-      `"Cara saya membaca laporan keuangan dalam 10 menit — cheatsheet yang selalu saya pakai"`,
-      `"Perbedaan mindset keuangan antara orang yang berkembang dan yang stagnan di industri ini"`,
-    ],
-  };
+  // Headline example
+  const skill1 = skills.length > 0 ? skills[0] : industry.split(" & ")[0];
+  const skill2 = skills.length > 1 ? skills[1] : industry.split(" & ").slice(-1)[0];
+  const exampleHeadline = `${skill1} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "| Fresh Graduate" : "Professional"} | ${skill2} | ${industry.split(" & ")[0]}`;
 
-  const contentIdeas = (industryContentIdeas[industry] || [
-    `"Hal yang tidak diajarkan kampus tentang dunia kerja ${industry} — dari pengalaman pertama saya"`,
-    `"Kesalahan terbesar yang saya buat di awal karier dan apa yang saya pelajari darinya"`,
-    `"Timeline jujur perjalanan dari [titik awal kamu] ke posisi saat ini"`,
-  ]);
-
-  // Week 1 personalized tasks
-  const week1Tasks: string[] = [];
-  if (!hasLinkedin) {
-    week1Tasks.push("Buat atau aktifkan kembali profil LinkedIn — ini non-negotiable di 2025");
-  } else {
-    week1Tasks.push(`Perbarui headline LinkedIn: hapus jabatan generik, ganti dengan formula [Keahlian Utama] | [Nilai yang Kamu Bawa] | [Target Industri]`);
-  }
-  if (gpa && parseFloat(gpa) >= 3.2) {
-    week1Tasks.push(`Tampilkan IPK ${gpa} secara strategis — letakkan tepat di bawah nama institusi dengan format: ${university || "Universitas"} — ${major || "Jurusan"} — IPK: ${gpa}/4.00`);
-  }
-  if (passiveCount > 0) {
-    week1Tasks.push(`Rewrite ${Math.min(passiveCount, 5)} bullet point pasif menggunakan rumus: Kata Kerja Aksi + Objek + Hasil Terukur + Konteks`);
-  }
-  if (!hasMetrics) {
-    week1Tasks.push("Tambahkan minimal 1 angka ke setiap pengalaman: jumlah orang, %, budget, timeline, atau skala proyek");
-  }
-  if (skills.length > 0) {
-    week1Tasks.push(`Verifikasi bagian Skills: pastikan semua tool yang kamu kuasai sudah tercantum — termasuk ${skills.slice(0, 3).join(", ")} yang sudah terdeteksi di CV`);
-  }
-  week1Tasks.push("Simpan CV dalam format PDF dengan nama file: [NamaLengkap]_CV_[BulanTahun].pdf");
-  week1Tasks.push("Minta 2–3 rekomendasi LinkedIn dari orang yang pernah bekerja atau berorganisasi sama kamu");
-
-  // ── Build the document ────────────────────────────────────────────────────
-
-  const problemText =
-    problemList.length > 0
-      ? problemList.map((p, i) => `**${i + 1}.** ${p}`).join("\n\n")
-      : "Secara keseluruhan CV kamu punya fondasi yang perlu dioptimalkan lebih jauh.";
-
-  const skillsLine =
-    skills.length > 0
-      ? `Tool dan skill yang terdeteksi di CV kamu — ${skills.slice(0, 6).join(", ")} — adalah aset nyata. Tapi cara mengkomunikasikannya belum menjawab satu pertanyaan kunci yang ada di kepala rekruter: *"Impact-nya apa?"*`
-      : `Bagian Skills di CV kamu perlu diperkuat dengan tool dan kemampuan teknis spesifik — ini adalah keyword pertama yang dibaca sistem ATS sebelum sampai ke mata rekruter.`;
-
-  const expContext =
-    companyDesc
-      ? `Kamu sudah punya rekam jejak nyata${companyDesc ? ` di ${companyDesc}` : ""} — ini modal berharga yang banyak orang tidak punya di tahap yang sama.`
-      : careerLevel === "student"
-      ? `Sebagai mahasiswa aktif, pengalaman organisasi dan proyek akademik kamu adalah modal utama yang harus dikemas dengan benar.`
-      : `Pengalaman yang kamu miliki adalah modal nyata — tugasnya sekarang adalah memastikan semuanya dikomunikasikan dengan format yang benar kepada rekruter.`;
-
-  // LinkedIn AREA B section — computed separately to avoid nested template literal issues
-  const exampleHeadline = `${skills.length > 0 ? skills[0] : industry.split(" ")[0]} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "| Fresh Graduate" : "Professional"} | ${skills.length > 1 ? skills.slice(0, 2).join(" & ") : industry.split(" ")[0]} | Open to Opportunities`;
-
+  // ── LinkedIn section (LEVEL 1) ────────────────────────────────────────────
   let linkedInSection: string;
   if (!hasLinkedin) {
-    linkedInSection = `TEMUAN: Tidak ada URL LinkedIn yang disertakan dalam CV ${firstName}.
-ANALISA: LinkedIn adalah mesin pencari personal brand — rekruter aktif menggunakan boolean search untuk menemukan kandidat secara proaktif. Tanpa profil publik, kamu tidak ada di radar mereka.
-DAMPAK: Kandidat tanpa LinkedIn kehilangan 70%+ peluang dari rekruter yang mencari secara aktif.
-REKOMENDASI: Buat profil LinkedIn hari ini. Gunakan nama lengkap persis seperti di CV. Headline langsung: "${exampleHeadline}"
-PRIORITAS: HIGH
+    linkedInSection = `### Audit LinkedIn ${firstName} — Status: BELUM ADA
 
-TEMUAN: Lima area wajib dioptimalkan segera setelah profil dibuat: headline, foto profil, banner, bagian About, dan Skills section.
-ANALISA: Profil LinkedIn yang tidak dioptimalkan sama buruknya dengan tidak punya profil — rekruter yang mengklik akan langsung keluar jika tidak ada isi yang menarik.
-DAMPAK: Profil kosong atau setengah jadi memberi kesan negatif dan ketidakseriusan.
-REKOMENDASI: Selesaikan semua 5 area dalam satu sesi 2–3 jam. Gunakan CV sebagai bahan dasar, adaptasikan ke format dan tone LinkedIn.
-PRIORITAS: HIGH`;
+**TEMUAN:** Tidak ada URL LinkedIn yang disertakan dalam CV ${firstName}.
+
+**ANALISA:** LinkedIn adalah mesin pencari personal brand nomor satu. Rekruter aktif menggunakan boolean search untuk menemukan kandidat secara proaktif — artinya mereka datang ke kamu, bukan menunggu lamaranmu. Tanpa profil publik yang teroptimasi, kamu tidak ada di radar mereka.
+
+**DAMPAK:** Kandidat tanpa LinkedIn kehilangan 70%+ peluang dari rekruter yang mencari secara aktif. Ketika rekruter mencari namamu di Google, tidak ada aset digital yang mendukung narasi CV.
+
+**REKOMENDASI:** Buat profil LinkedIn hari ini. Nama lengkap persis seperti di CV. Dalam 48 jam pertama selesaikan: foto profil, headline, About (pakai draf di 4C), pengalaman dari CV, dan Skills.
+
+Headline langsung yang bisa dipakai: *"${exampleHeadline}"*
+
+**PRIORITAS: 🔴 SANGAT TINGGI**
+
+---
+
+**TEMUAN:** Lima area LinkedIn wajib dioptimalkan segera.
+
+**ANALISA:** Profil LinkedIn yang kosong atau setengah jadi memberi kesan negatif. Rekruter yang mengklik akan langsung menutup tab jika tidak menemukan isi yang menarik.
+
+**DAMPAK:** Profil kosong = kesan ketidakprofesionalan yang tidak bisa diperbaiki di tahap selanjutnya.
+
+**REKOMENDASI:** Urutan pengerjaan:
+1. **Foto profil** — latar bersih, ekspresi natural, pakaian sesuai industri ${industry}
+2. **Headline** — gunakan opsi di bagian 4B
+3. **Banner** — buat di Canva, 1584×396px, cantumkan tagline dan ${skills.length > 0 ? skills.slice(0, 2).join("/") : "keahlian utama"}
+4. **About** — gunakan draf di bagian 4C
+5. **Skills** — minimal 10 skill, minta endorsement dari 3+ koneksi
+
+**PRIORITAS: 🔴 SANGAT TINGGI**`;
   } else if (linkedInProfile) {
     const liHeadline = linkedInProfile.headline || "(kosong)";
     const headlineNote = !linkedInProfile.headline
-      ? "Headline kosong — ini yang pertama dilihat rekruter di search result."
-      : linkedInProfile.headline.length < 40
-      ? `Hanya ${linkedInProfile.headline.length} karakter — belum memaksimalkan 220 karakter yang tersedia.`
-      : linkedInProfile.headline.includes("|") || linkedInProfile.headline.includes("·")
-      ? "Sudah menggunakan separator, tapi perlu dicek apakah mengkomunikasikan nilai nyata atau hanya jabatan."
-      : "Perlu dioptimalkan dengan keyword yang lebih spesifik.";
-
+      ? "Headline **kosong** — ini yang pertama dilihat rekruter di search result LinkedIn."
+      : linkedInProfile.headline.length < 60
+      ? `Hanya ${linkedInProfile.headline.length} karakter — jauh dari 220 karakter yang tersedia.`
+      : "Perlu dicek apakah mengkomunikasikan nilai nyata, bukan sekadar jabatan.";
     const aboutStatus = linkedInProfile.summary
-      ? `sudah diisi — *"${linkedInProfile.summary.slice(0, 150)}${linkedInProfile.summary.length > 150 ? "..." : ""}"*. Perlu dicek kekuatan hook di kalimat pertama.`
-      : "**KOSONG** — kesempatan terbesar yang belum dimanfaatkan.";
+      ? `sudah diisi: *"${linkedInProfile.summary.slice(0, 200)}${linkedInProfile.summary.length > 200 ? "..." : ""}"* — perlu dicek kekuatan hook di kalimat pertama`
+      : "**KOSONG** — ini real estate terbaik yang belum dimanfaatkan";
+    const photoStatus = linkedInProfile.profile_pic_url ? "terdeteksi ✓" : "tidak terdeteksi — perlu dicek";
+    const bannerStatus = linkedInProfile.background_cover_image_url
+      ? "terdeteksi ✓ — pastikan on-brand"
+      : "tidak terdeteksi — kemungkinan masih default biru LinkedIn";
 
-    const photoStatus = linkedInProfile.profile_pic_url ? "terdeteksi ✓" : "tidak terdeteksi — perlu dicek apakah sudah dipasang dan dipublikasikan";
-    const bannerStatus = linkedInProfile.background_cover_image_url ? "terdeteksi ✓ — pastikan on-brand" : "tidak terdeteksi — kemungkinan masih default biru LinkedIn";
+    linkedInSection = `### Audit LinkedIn ${firstName} — Data Profil Terdeteksi
 
-    const skillsBlock = linkedInProfile.skills && linkedInProfile.skills.length > 0
-      ? `TEMUAN: Skills terdaftar di LinkedIn: **${linkedInProfile.skills.slice(0, 8).join(", ")}**${linkedInProfile.skills.length > 8 ? ` (+${linkedInProfile.skills.length - 8} lainnya)` : ""}. ${skills.length > 0 ? `Skills di CV: ${skills.slice(0, 4).join(", ")}.` : ""}
-ANALISA: Rekruter sering membandingkan LinkedIn dan CV. Inkonsistensi menciptakan keraguan tentang mana yang akurat.
-DAMPAK: Skills yang tidak selaras antara dua platform bisa menurunkan kredibilitas tanpa disadari.
-REKOMENDASI: Sinkronkan skills di CV dan LinkedIn. Prioritaskan keyword yang sering muncul di job description target di ${industry}.
-PRIORITAS: MEDIUM`
-      : `TEMUAN: Skills di LinkedIn perlu diisi atau diverifikasi agar selaras dengan CV.
-ANALISA: Skills section di LinkedIn adalah keyword yang dibaca rekruter saat boolean search. Tanpa ini, profil tidak terindeks untuk pencarian spesifik.
-DAMPAK: Skills kosong = tidak muncul di pencarian spesifik = kehilangan peluang yang bahkan tidak disadari.
-REKOMENDASI: Tambahkan minimal 10 skill: ${skills.length > 0 ? skills.slice(0, 6).join(", ") : "tool teknis yang kamu kuasai"}. Minta endorsement dari 3+ koneksi.
-PRIORITAS: MEDIUM`;
+**TEMUAN:** Headline LinkedIn saat ini: *"${liHeadline}"*. ${headlineNote}
 
-    linkedInSection = `TEMUAN: Headline LinkedIn ${firstName} saat ini: **"${liHeadline}"**. ${headlineNote}
-ANALISA: Headline muncul di search result LinkedIn. Formula efektif: [Keahlian Utama] | [Nilai yang Kamu Bawa] | [Target Industri].
-DAMPAK: Profil dengan headline yang dioptimalkan mendapat 40% lebih banyak penampilan di pencarian rekruter.
-REKOMENDASI: Ganti${linkedInProfile.headline ? ` dari "${linkedInProfile.headline}"` : ""} menjadi: "${exampleHeadline}"
-PRIORITAS: HIGH
+**ANALISA:** Headline muncul di search result LinkedIn dan notifikasi koneksi. Formula efektif: [Keahlian Utama] | [Nilai yang Kamu Bawa] | [Target Industri/Posisi].
 
-TEMUAN: Bagian About: ${aboutStatus}
-ANALISA: Bagian About adalah 2.600 karakter real estate terbaik di LinkedIn. Kalimat pembuka menentukan apakah rekruter mengklik atau scroll.
-DAMPAK: About yang kosong atau hook yang lemah membuat rekruter tidak bisa membedakan kamu dari ratusan kandidat lain.
-REKOMENDASI: Tulis About 4 blok: **(1) Hook** — 1–2 kalimat kuat sebelum "lihat selengkapnya"${university ? ` (hubungkan background ${university} dengan dampak nyata)` : ""}; **(2) Perjalanan singkat**; **(3) Keahlian inti** — ${skills.length > 0 ? skills.slice(0, 4).join(", ") : "tool teknis utama"}; **(4) CTA** — apa yang kamu cari dan cara dihubungi.
-PRIORITAS: HIGH
+**DAMPAK:** Headline yang dioptimalkan menghasilkan 40% lebih banyak klik profil dari pencarian rekruter.
 
-TEMUAN: Foto profil: ${photoStatus}. Banner: ${bannerStatus}.
-ANALISA: Profil dengan foto profesional mendapat 21x lebih banyak dilihat. Banner adalah iklan gratis 1584x396px yang mayoritas pengguna biarkan default.
-DAMPAK: Kesan pertama terjadi secara visual dalam <1 detik — sebelum rekruter membaca satu kata dari headline.
-REKOMENDASI: Foto: latar bersih, pakaian sesuai ${industry}, ekspresi natural, ukuran min 400x400px. Banner: buat di Canva dengan tagline dan ${skills.length > 0 ? skills.slice(0, 2).join(" / ") : "keahlian utama"}, ukuran 1584x396px.
-PRIORITAS: MEDIUM
+**REKOMENDASI:** Ganti${linkedInProfile.headline ? ` dari "${linkedInProfile.headline}"` : ""} ke salah satu opsi di bagian 4B. Opsi cepat: *"${exampleHeadline}"*
 
-${skillsBlock}`;
+**PRIORITAS: 🔴 TINGGI**
+
+---
+
+**TEMUAN:** Bagian About: ${aboutStatus}
+
+**ANALISA:** Bagian About adalah 2.600 karakter real estate terbaik di LinkedIn. Kalimat pembuka menentukan apakah rekruter klik "lihat selengkapnya" atau scroll.
+
+**DAMPAK:** About yang kosong atau hook yang lemah membuat ${firstName} tidak terbedakan dari ratusan kandidat lain.
+
+**REKOMENDASI:** Gunakan draf di bagian 4C. Struktur: WHO → WHAT → WHY → CTA.
+
+**PRIORITAS: 🔴 TINGGI**
+
+---
+
+**TEMUAN:** Foto profil: ${photoStatus}. Banner: ${bannerStatus}.
+
+**ANALISA:** Profil dengan foto profesional mendapat 21× lebih banyak dilihat. Banner adalah iklan gratis 1584×396px yang mayoritas pengguna biarkan default.
+
+**DAMPAK:** Kesan pertama terjadi secara visual dalam <1 detik — sebelum rekruter membaca satu kata dari headline.
+
+**REKOMENDASI:** Foto: latar bersih, pakaian sesuai ${industry}, ekspresi natural, min 400×400px. Banner: Canva 1584×396px dengan tagline dan ${skills.length > 0 ? skills.slice(0, 2).join("/") : "keahlian utama"}.
+
+**PRIORITAS: 🟡 SEDANG**
+
+---
+
+**TEMUAN:** Skills LinkedIn: ${linkedInProfile.skills && linkedInProfile.skills.length > 0 ? `terdeteksi ${linkedInProfile.skills.length} skill — ${linkedInProfile.skills.slice(0, 6).join(", ")}` : "belum terdeteksi atau kosong"}.
+
+**ANALISA:** Skills section adalah keyword yang dibaca rekruter saat boolean search. Tanpa ini, profil tidak muncul di pencarian spesifik.
+
+**DAMPAK:** Skills kosong = tidak terindeks untuk pencarian spesifik = kehilangan peluang yang tidak pernah disadari.
+
+**REKOMENDASI:** ${linkedInProfile.skills && linkedInProfile.skills.length > 0 ? `Sinkronkan dengan CV: ${skills.length > 0 ? skills.slice(0, 5).join(", ") : "tool teknis utama"}. Tambahkan yang belum ada.` : `Tambahkan minimal 10 skill: ${skills.length > 0 ? skills.slice(0, 6).join(", ") : "tool teknis yang dikuasai"}. Minta endorsement dari 3+ koneksi.`}
+
+**PRIORITAS: 🟡 SEDANG**`;
   } else {
-    // Has LinkedIn URL but no profile data (no Proxycurl key)
-    linkedInSection = `TEMUAN: URL LinkedIn sudah disertakan (${linkedinUrl}). Audit profil berdasarkan checklist standar karena data profil tidak dapat diakses secara otomatis.
-ANALISA: Headline, About, foto, banner, dan Skills section adalah lima area yang menentukan apakah rekruter mau mengklik profil kamu di search result.
-DAMPAK: Profil LinkedIn yang tidak dioptimalkan sama buruknya dengan tidak punya profil — rekruter yang mengklik tanpa menemukan isi yang menarik akan langsung keluar.
-REKOMENDASI: Buka profil LinkedIn kamu sekarang dan cek satu per satu: (1) Headline — sudah pakai formula [Keahlian] | [Nilai] | [Industri]? Contoh: "${exampleHeadline}" (2) About — sudah ada hook kuat di 2 kalimat pertama? (3) Foto — profesional dan latar bersih? (4) Banner — bukan default biru LinkedIn? (5) Skills — minimal 10 skill relevan sudah terdaftar?
-PRIORITAS: HIGH
+    linkedInSection = `### Audit LinkedIn ${firstName} — URL Ada, Data Perlu Verifikasi Manual
 
-TEMUAN: Sinkronisasi antara CV dan profil LinkedIn perlu diverifikasi secara manual.
-ANALISA: Rekruter sering membuka CV dan LinkedIn secara bersamaan. Inkonsistensi — nama jabatan berbeda, periode kerja berbeda, skill tidak selaras — menciptakan keraguan tentang kredibilitas.
-DAMPAK: Inkonsistensi kecil sekalipun bisa menjadi alasan penolakan yang tidak pernah dikomunikasikan ke kandidat.
-REKOMENDASI: Buka CV dan LinkedIn side by side. Pastikan: nama perusahaan identik, periode kerja sama, deskripsi peran konsisten, dan skills di kedua platform selaras. ${skills.length > 0 ? `Tambahkan ${skills.slice(0, 4).join(", ")} ke LinkedIn Skills jika belum ada.` : ""}
-PRIORITAS: MEDIUM`;
+**TEMUAN:** URL LinkedIn disertakan (${linkedinUrl}). Data profil tidak bisa diakses otomatis — audit berdasarkan checklist standar.
+
+**ANALISA:** Lima area menentukan apakah rekruter mau mengklik profil: headline, foto, banner, About, dan Skills.
+
+**DAMPAK:** Profil yang tidak dioptimalkan sama buruknya dengan tidak punya profil.
+
+**REKOMENDASI:** Buka profil LinkedIn sekarang dan cek satu per satu:
+1. ✅/❌ **Headline** — pakai formula [Keahlian] | [Nilai] | [Industri]? Contoh: *"${exampleHeadline}"*
+2. ✅/❌ **About** — ada hook kuat di 2 kalimat pertama?
+3. ✅/❌ **Foto** — profesional, latar bersih?
+4. ✅/❌ **Banner** — bukan default biru LinkedIn?
+5. ✅/❌ **Skills** — minimal 10 skill relevan terdaftar?
+
+Gunakan draf di bagian 4B dan 4C sebagai baseline.
+
+**PRIORITAS: 🔴 TINGGI**
+
+---
+
+**TEMUAN:** Sinkronisasi CV ↔ LinkedIn perlu diverifikasi manual.
+
+**ANALISA:** Rekruter sering membuka CV dan LinkedIn bersamaan. Inkonsistensi — jabatan berbeda, periode kerja berbeda, skill tidak selaras — menciptakan keraguan tentang kredibilitas.
+
+**DAMPAK:** Inkonsistensi kecil sekalipun bisa menjadi alasan penolakan yang tidak pernah dikomunikasikan.
+
+**REKOMENDASI:** Buka CV dan LinkedIn side by side. Pastikan: nama perusahaan identik, periode kerja sama, deskripsi konsisten, skills selaras. ${skills.length > 0 ? `Tambahkan ${skills.slice(0, 4).join(", ")} ke LinkedIn Skills jika belum.` : ""}
+
+**PRIORITAS: 🟡 SEDANG**`;
   }
 
-  return `# RINGKASAN EKSEKUTIF
+  // ── LEVEL 2: CV bullet rewrites ─────────────────────────────────────────
+  const bulletsToRewrite = allBullets.slice(0, 20);
+  const bulletRewrites = bulletsToRewrite.map((bullet, i) => {
+    const transformed = transformWeakBullet(bullet);
+    const isWeak = weakBullets.some((w) => w.toLowerCase() === bullet.toLowerCase());
+    return `**Poin ${i + 1}:**
+
+> **SEBELUM:** "${bullet}"
+
+> **SESUDAH:** "${transformed}"
+
+*Catatan: ${isWeak ? "Kalimat pasif — ubah kata kerja pertama menjadi kata kerja dampak, lalu tambahkan angka." : "Struktur sudah lebih aktif — pastikan ada minimal satu angka atau metrik konkret."}*`;
+  });
+
+  if (bulletRewrites.length === 0) {
+    bulletRewrites.push(
+      `**Poin 1 (Contoh):**\n\n> **SEBELUM:** "Bertanggung jawab atas pembuatan konten media sosial dan koordinasi acara"\n\n> **SESUDAH:** "Memproduksi [X] konten media sosial per bulan untuk [nama organisasi], menghasilkan pertumbuhan engagement [X]% dalam [X bulan] — [tambahkan angka nyata]"\n\n*Catatan: Ubah setiap bullet di CVmu menggunakan pola ini.*`,
+      `**Poin 2 (Contoh):**\n\n> **SEBELUM:** "Membantu tim dalam pelaksanaan program kerja divisi"\n\n> **SESUDAH:** "Mengkoordinasikan [X] anggota tim dalam eksekusi [X] program kerja — [X]% diselesaikan tepat waktu dalam periode [bulan-bulan]"\n\n*Catatan: "Membantu" tidak menunjukkan kontribusi spesifikmu.*`,
+      `**Poin 3 (Contoh):**\n\n> **SEBELUM:** "Melakukan presentasi dan membuat laporan untuk keperluan akademik"\n\n> **SESUDAH:** "Mempresentasikan hasil analisis kepada audiens [X orang] dan menghasilkan [X] laporan yang digunakan untuk [keputusan konkret]"\n\n*Catatan: "Melakukan" selalu bisa diganti kata kerja yang lebih spesifik.*`
+    );
+  }
+
+  // ── Hook bank (15 hooks) ──────────────────────────────────────────────────
+  const hookRows = [
+    { no: 1, hook: `Saya habiskan ${careerLevel === "student" ? "4 tahun kuliah" : "bertahun-tahun"} belajar ${industry.split(" & ")[0]} — dan ini yang tidak ada yang ajarkan:`, tipe: "Pengungkapan" },
+    { no: 2, hook: `Hot take: [pernyataan kontroversi tentang ${industry}]. Dan ini alasannya:`, tipe: "Opini Berani" },
+    { no: 3, hook: `${gpa ? `IPK ${gpa}` : "Nilai sempurna"} tidak mengajarkan saya cara [skill kritis di ${industry}]. Ini yang mengajarkan saya:`, tipe: "Pengalaman Jujur" },
+    { no: 4, hook: `Sebelum masuk ${industry}, saya wish tahu hal ini. Sekarang saya share:`, tipe: "Wishlist" },
+    { no: 5, hook: `Saya pernah ditolak [X kali]. Baru sadar masalahnya bukan skill, tapi cara presentasinya. Thread:`, tipe: "Kerentanan" },
+    { no: 6, hook: `Checklist yang saya gunakan sebelum submit lamaran ke perusahaan ${industry} (simpan ini):`, tipe: "Resource" },
+    { no: 7, hook: `${companyDesc ? `Di ${companyDesc}` : "Di pekerjaan pertama saya"}, ada satu pelajaran yang tidak bisa dapat dari kelas manapun:`, tipe: "Story" },
+    { no: 8, hook: `3 hal yang recruiter ${industry} tidak akan ceritakan ke kamu — tapi sangat mempengaruhi hasil lamaranmu:`, tipe: "Rahasia Industri" },
+    { no: 9, hook: `Framework [X langkah] yang saya pakai untuk [tugas spesifik di ${industry}] — gratis di komentar:`, tipe: "How-to" },
+    { no: 10, hook: `Tren ${industry} yang akan mendominasi tahun depan — dan cara posisikan diri sekarang:`, tipe: "Tren & Prediksi" },
+    { no: 11, hook: `${skills.length > 0 ? skills[0] : `Skill kunci di ${industry}`} bukan tentang tekniknya — tapi tentang cara menggunakannya untuk [outcome]. Penjelasannya:`, tipe: "Reframing" },
+    { no: 12, hook: `Saya compare dua pendekatan selama [X bulan]. Hasilnya mengejutkan:`, tipe: "Eksperimen" },
+    { no: 13, hook: `Pertanyaan yang saya wish tanyakan ke diri sendiri 2 tahun lalu:`, tipe: "Refleksi" },
+    { no: 14, hook: `Orang sukses di ${industry} tidak hanya kerja keras — mereka kerja dengan sistem ini:`, tipe: "Sistem" },
+    { no: 15, hook: `Hari ini saya share sesuatu yang tidak nyaman diakui. Tapi mungkin kamu butuh dengar ini:`, tipe: "Keberanian" },
+  ];
+
+  // ── Content calendar 4 weeks ──────────────────────────────────────────────
+  const calendarRows = [
+    { minggu: 1, hari: "Selasa", tipe: "Story / Perkenalan", topik: `Siapa ${firstName} — bukan bio, tapi cerita mengapa memilih ${industry}`, format: "Text post 150–250 kata", cta: "Tag seseorang yang sedang di fase yang sama" },
+    { minggu: 1, hari: "Kamis", tipe: "How-to / Resource", topik: `${skills.length > 0 ? `Cara menggunakan ${skills[0]} untuk [tugas spesifik]` : "Checklist yang saya pakai sebelum submit lamaran"}`, format: "List / numbered", cta: "Save jika berguna, share ke yang butuh" },
+    { minggu: 2, hari: "Selasa", tipe: "Lesson Learned", topik: `Pelajaran terbesar dari${companyDesc ? ` ${companyDesc}` : " pengalaman pertama"}`, format: "Text post 200–300 kata", cta: "Kamu pernah pelajaran serupa? Cerita di komentar" },
+    { minggu: 2, hari: "Kamis", tipe: "Opini / Hot Take", topik: `Hot take tentang ${industry} yang tidak populer tapi saya percaya`, format: "Text pendek + visual", cta: "Setuju atau tidak? Kenapa?" },
+    { minggu: 3, hari: "Selasa", tipe: "Behind the Scene", topik: "Proses saya [mengerjakan X] — dari awal sampai selesai", format: "Text + foto/screenshot", cta: "Ada yang mau tahu lebih detail?" },
+    { minggu: 3, hari: "Kamis", tipe: "How-to / Framework", topik: `Framework [X langkah] untuk [masalah spesifik di ${industry}]`, format: "Carousel / numbered list", cta: "Tag rekan yang butuh ini" },
+    { minggu: 4, hari: "Selasa", tipe: "Refleksi / Update", topik: "30 hari pertama rutin posting LinkedIn — ini yang saya pelajari", format: "Text post 250–350 kata", cta: "Follow untuk update bulan berikutnya" },
+    { minggu: 4, hari: "Kamis", tipe: "Engagement / Q&A", topik: `Pertanyaan terbuka: apa tantangan terbesar di ${industry} yang sedang kamu hadapi?`, format: "Text pendek + pertanyaan", cta: "Jawab di komentar — saya balas semua" },
+  ];
+
+  // ── Week 1 tasks ─────────────────────────────────────────────────────────
+  const week1Tasks: string[] = [];
+  if (!hasLinkedin) {
+    week1Tasks.push("Buat profil LinkedIn hari ini — nama lengkap persis seperti di CV. Ini non-negotiable di 2025");
+  } else {
+    week1Tasks.push("Perbarui headline LinkedIn menggunakan salah satu opsi dari bagian 4B");
+  }
+  week1Tasks.push("Upload foto profil profesional dan buat banner custom di Canva (1584×396px)");
+  week1Tasks.push("Salin draf About dari bagian 4C dan sesuaikan dengan detail nyata");
+  week1Tasks.push(`Rewrite ${Math.min(allBullets.length > 0 ? allBullets.length : 5, 10)} bullet point CV menggunakan rumus dampak dari bagian 4D`);
+  if (gpa && parseFloat(gpa) >= 3.2) {
+    week1Tasks.push(`Pastikan IPK ${gpa} dan ${university || "nama universitas"} muncul jelas di CV dan LinkedIn`);
+  }
+  const skillGap = 10 - Math.min(skills.length, 10);
+  if (skillGap > 0) {
+    week1Tasks.push(`Tambahkan ${skillGap} skill ke LinkedIn Skills section — mulai dari ${skills.slice(0, 3).join(", ") || "tool teknis yang dikuasai"}`);
+  } else {
+    week1Tasks.push("Minta endorsement dari 3+ koneksi untuk skills yang sudah terdaftar di LinkedIn");
+  }
+  week1Tasks.push("Simpan CV versi baru: format PDF, nama file [NamaLengkap]_CV_[BulanTahun].pdf");
+  week1Tasks.push("Minta 2–3 rekomendasi LinkedIn dari orang yang pernah bekerja atau berorganisasi bersama");
+
+  // ── Build document ───────────────────────────────────────────────────────
+
+  return `# CARA MEMBACA DOKUMEN INI
+
+Dokumen ini bukan laporan akademis. Ini adalah peta kerja — detail, spesifik, dan dibuat khusus untuk ${firstName}.
+
+**Dua konvensi penting:**
+
+1. **[ANGKA]** — Ketika kamu melihat placeholder seperti [X orang] atau [X%], itu adalah instruksi eksplisit untuk mengisi dengan data nyata dari pengalamanmu sendiri. Estimasi yang jujur selalu lebih kuat dari klaim abstrak.
+
+2. **PROVISIONAL** — Bagian yang ditandai PROVISIONAL dibuat berdasarkan profil LinkedIn yang tidak dapat diverifikasi sepenuhnya. Cek dan sesuaikan dengan kondisi aktual profilmu.
+
+Cara optimal menggunakan dokumen ini: baca sekali dari awal sampai akhir, lalu kembali ke bagian 4D dan eksekusi satu bullet point per hari. Momentum dibangun dari aksi kecil yang konsisten.
+
+---
+
+# INVENTARIS INPUT & KONTEKS KLIEN
+
+| Input | Status | Catatan |
+|-------|--------|---------|
+| CV | **${cvStatus}** | ${cvText.length > 3000 ? `${Math.round(cvText.length / 100) * 100} karakter terdeteksi — data cukup untuk analisa mendalam` : cvText.length > 1000 ? "CV ada tapi belum lengkap — beberapa seksi mungkin perlu ditambah" : "CV sangat singkat — analisa terbatas, rekomendasi bersifat umum"} |
+| LinkedIn | **${liStatus}** | ${!hasLinkedin ? "Tidak ada URL LinkedIn — prioritas untuk dibuat segera" : linkedInProfile ? "Profil terdeteksi — headline, About, dan skills berhasil diambil" : "URL ada tapi profil tidak bisa diakses otomatis — rekomendasi berdasarkan checklist"} |
+
+**Konteks Klien:**
+
+| Parameter | Detail |
+|-----------|--------|
+| Nama | ${name} |
+| Level Karir | ${levelLabel[careerLevel]} |
+| Industri Terdeteksi | ${industry} |
+| Pendidikan | ${eduDesc || "Tidak terdeteksi di CV"} |
+| Perusahaan Utama | ${companyDesc || companies.join(", ") || "Tidak terdeteksi"} |
+| Skills Utama | ${skills.slice(0, 6).join(", ") || "Perlu diperkuat"} |
+| Jumlah Bullet Point | ${allBullets.length} poin terdeteksi |
+| Kalimat Pasif | ${passiveCount} kalimat pasif terdeteksi |
+| Metrik/Angka | ${metricsCount} data terukur terdeteksi |
+
+**Kesimpulan Input:** CV ${firstName} ${cvStatus === "LENGKAP" ? "cukup lengkap untuk analisa mendalam" : cvStatus === "TERBATAS" ? "memberikan data cukup untuk analisa, meski beberapa detail mungkin perlu ditambah secara manual" : "terlalu singkat — pastikan semua pengalaman, pendidikan, dan skill sudah tercantum"}, dengan ${passiveCount} titik lemah yang bisa segera diperbaiki dan **${100 - totalScore} poin skor yang bisa diraih dalam 90 hari**.
+
+---
+
+# RINGKASAN EKSEKUTIF
 
 ${firstName}, ${openingCtxStr}
 
-${problemText}
+${problemList.length > 0 ? problemList.map((p, i) => `**Masalah ${i + 1}:** ${p}`).join("\n\n") : "Secara keseluruhan, CV dan personal brand kamu punya fondasi yang perlu dioptimalkan lebih jauh."}
 
-${skillsLine}
+Ini bukan tentang kemampuanmu. Masalahnya adalah **kemasan** — cara kamu mengkomunikasikan nilai nyata yang sudah ada di CV.${companyDesc ? ` Pengalaman di ${companyDesc} adalah aset yang kamu undervalue.` : university ? ` Background dari ${university} adalah modal yang belum dioptimalkan.` : ""}
 
-Kabar baiknya: **semua ini bisa diperbaiki**. Dalam laporan lengkap ini, kamu akan dapat cetak biru yang spesifik — mulai dari rewrite kalimat per kalimat menggunakan bullet point nyata dari CV kamu, rencana konten 30 hari, sampai skor terukur per area. Bukan teori. Bukan motivasi kosong. Instruksi yang bisa kamu eksekusi besok pagi.
+Kabar baiknya: **semua ini bisa diperbaiki**. Dalam laporan ini kamu akan mendapatkan:
+- Rewrite **setiap poin pengalaman** di CV dengan rumus dampak (bagian 4D)
+- Tiga opsi **headline LinkedIn** yang siap pakai (bagian 4B)
+- Draf lengkap **About LinkedIn** (bagian 4C)
+- **15 hook konten** siap posting (bagian 4F)
+- **Kalender konten 4 minggu** (bagian 4J)
+- **Skor terukur** per area dengan rencana peningkatan
 
-# KONTEKS KLIEN
+Bukan teori. Bukan motivasi kosong. Instruksi yang bisa kamu eksekusi besok pagi.
 
-${firstName} berada di level **${levelLabel[careerLevel]}** di industri **${industry}**.
-
-${eduDesc ? `**Latar Belakang Akademis:** ${eduDesc}. ${gpa && parseFloat(gpa) >= 3.5 ? `IPK ${gpa} adalah modal akademik yang kuat — tapi hanya efektif kalau dikomunikasikan dengan placement yang tepat di CV.` : gpa ? `IPK ${gpa} perlu ditampilkan dengan konteks yang benar agar tidak kehilangan nilainya.` : "Detail akademis perlu ditampilkan dengan format yang memaksimalkan dampaknya."}` : "Informasi pendidikan ada di CV — kita perlu memastikan ini dioptimalkan dengan placement dan format yang benar."}
-
-${expContext}
-
-**Skills yang terdeteksi di CV kamu:** ${skills.length > 0 ? skills.slice(0, 8).join(", ") : "Belum ada tool spesifik yang terdeteksi — bagian ini perlu diperkuat."}
-
-**LinkedIn:** ${hasLinkedin ? `URL sudah disertakan (${linkedinUrl}). Ini langkah yang benar — sekarang kita perlu memastikan profil di balik URL itu sudah dioptimalkan untuk searchability dan first impression.` : "Tidak ada URL LinkedIn yang disertakan. Di 2025, rekruter mencari nama kandidat di LinkedIn sebelum bahkan membalas email. Ini harus menjadi prioritas minggu ini."}
-
-Satu catatan: analisa ini dibuat berdasarkan teks CV yang kamu kirimkan. Semakin lengkap CV-nya, semakin tajam rekomendasinya. Jika ada pengalaman, proyek, atau pencapaian yang belum tercantum, inilah saatnya ditambahkan sebelum mulai melamar.
+---
 
 # YANG SUDAH KUAT
 
-${gpa && parseFloat(gpa) >= 3.2 ? `**Pertama, performa akademis yang solid.** IPK ${gpa} kamu dari ${university || "institusi pendidikan kamu"} — ${major ? `jurusan ${major}` : "program studi kamu"} — adalah sinyal kognitif yang konkret. Ini adalah bukti kemampuan belajar yang konsisten dan disiplin, terutama relevan untuk posisi entry hingga junior. Jangan sembunyikan ini — justru jadikan pembuka yang kuat dengan format yang benar.` : `**Pertama, kamu sudah punya materi yang bisa diceritakan.** CV kamu mengandung pengalaman nyata yang bisa diangkat menjadi narasi personal brand yang kuat. Ini modal utama yang tidak semua orang punya di tahap yang sama.`}
+${gpa && parseFloat(gpa) >= 3.2
+  ? `**1. Performa akademis yang solid.**
+IPK ${gpa} dari ${university || "institusi pendidikanmu"}${major ? ` — jurusan ${major}` : ""} adalah sinyal kognitif yang konkret. Ini bukti kemampuan belajar yang konsisten dan disiplin. Relevan untuk posisi entry hingga mid-level. Jangan sembunyikan ini — jadikan pembuka yang strategis dengan format yang benar.`
+  : `**1. Kamu sudah punya materi yang bisa diceritakan.**
+CV kamu mengandung pengalaman nyata yang bisa diangkat menjadi narasi personal brand yang kuat. Ini modal utama yang tidak semua orang punya di tahap yang sama.`}
 
-**Kedua, ${companyDesc ? `rekam jejak nyata di ${companyDesc}.` : "pengalaman yang bisa jadi cerita kuat."} ${companyDesc ? `Setiap hari yang kamu habiskan di sana adalah bahan konten, bahan jawaban interview, dan bukti nyata bahwa kamu bisa deliver dalam lingkungan profesional.` : "Setiap pengalaman — sekecil apapun — adalah bahan konten, bahan jawaban interview, dan bukti kemampuan nyata."}**
+**2. ${companyDesc ? `Rekam jejak nyata di ${companyDesc}.` : "Pengalaman yang bisa jadi cerita kuat."}**
+${companyDesc ? `Setiap hari yang kamu habiskan di ${companyDesc} adalah bahan konten, bahan jawaban interview, dan bukti bahwa kamu bisa deliver dalam lingkungan profesional nyata. Ini adalah "proof of work" yang tidak bisa dipalsukan.` : "Setiap pengalaman — sekecil apapun — adalah bahan konten, bahan jawaban interview, dan bukti kemampuan nyata yang terakumulasi."}
 
-**Ketiga, ${skills.length > 0 ? `kemampuan teknis di area ${industry} yang relevan.` : "keberanian untuk memulai dan mencari feedback."} ${skills.length > 0 ? `Kamu sudah punya ${skills.slice(0, 4).join(", ")} — ini skill yang langsung bisa dipakai dan yang rekruter aktif cari. Dengan komunikasi yang benar, ini menjadi shortcut menuju wawancara.` : "Fakta bahwa kamu mencari feedback dan mau dikritik adalah tanda kedewasaan profesional. Banyak orang takut tahu kebenaran tentang CV mereka. Kamu tidak."}**
+**3. ${skills.length > 0 ? `Kemampuan teknis di area ${industry} yang relevan.` : "Keberanian untuk mencari feedback dan mau dikritik."}**
+${skills.length > 0 ? `Kamu sudah punya ${skills.slice(0, 4).join(", ")} — skill yang langsung bisa dipakai dan yang rekruter aktif cari. Dengan komunikasi yang benar, ini menjadi shortcut menuju wawancara.` : "Fakta bahwa kamu mencari feedback dan mau dikritik adalah tanda kedewasaan profesional. Banyak orang takut tahu kebenaran tentang CV mereka — kamu tidak."}
 
-**Keempat, ada fondasi cerita yang kuat di sini.** ${industry !== "Profesional" ? `Latar belakang kamu di bidang ${industry} adalah niche yang spesifik — dan niche yang spesifik artinya audiens yang lebih mudah dijangkau di LinkedIn.` : "Setiap pengalaman, sekecil apapun, adalah bahan konten LinkedIn, bahan jawaban wawancara, dan bahan personal branding yang menunggu untuk diolah dengan benar."}
+**4. Fondasi cerita yang kuat.**
+${industry !== "Profesional" ? `Background di bidang ${industry} adalah niche yang spesifik. Niche yang spesifik artinya audiens yang lebih mudah dijangkau dan pesan yang lebih mudah diingat di LinkedIn.` : "Setiap pengalaman dan keahlian yang kamu miliki adalah bahan konten yang menunggu untuk diolah. Yang kurang bukan materinya — tapi cara mengkemasnya."}
 
-**Kelima, kamu sudah mengambil langkah paling penting.** Banyak orang menunda mencari feedback karena takut tahu kebenaran tentang CV mereka. Kamu sudah melewati tahap itu — dan ini yang akan membedakan hasil akhir kamu dari kandidat lain yang hanya menunggu.
+**5. Kamu sudah mengambil langkah paling penting: mencari tahu.**
+Banyak orang menunda karena takut tahu kebenaran tentang CV mereka. Kamu sudah melewati tahap itu. Ini yang akan membedakan hasil akhirmu dari kandidat lain yang hanya menunggu.
+
+---
 
 # TEMUAN & REKOMENDASI
 
-## AREA A — Audit CV dengan Rumus Dampak
-
-TEMUAN: ${passiveCount > 0 ? `Terdeteksi ${passiveCount} penggunaan kalimat pasif di CV ${firstName} — termasuk frasa seperti "bertanggung jawab atas", "membantu", dan "melakukan" yang muncul berulang kali.` : "Penggunaan kata pasif minimal, tapi audit mendalam pada tiap bullet point tetap diperlukan untuk memastikan format dampak diterapkan secara konsisten."}
-ANALISA: Rumus CV yang benar adalah: **Kata Kerja Aksi → Objek → Hasil Terukur → Metode/Konteks**. Kalimat pasif hanya mendeskripsikan tugas — bukan membedakan kontribusi. Rekruter yang membaca 200 CV per hari tidak punya waktu untuk menyimpulkan dampak kamu sendiri.
-DAMPAK: ${passiveCount >= 3 ? `Dengan ${passiveCount} kalimat pasif, CV ${firstName} saat ini bercerita tentang apa yang dilakukan — bukan apa yang dicapai. Ini menempatkan kamu di kategori "perlu didiskualifikasi" di 6 detik pertama screening rekruter.` : "Setiap kalimat pasif adalah peluang yang hilang untuk menunjukkan nilai nyata kamu kepada rekruter."}
-REKOMENDASI: Untuk setiap bullet point, tanyakan: "Berapa orang terdampak? Berapa % peningkatannya? Berapa banyak yang diselesaikan? Dalam berapa waktu? Budget berapa?" — bahkan estimasi yang jujur selalu lebih kuat dari tidak ada angka sama sekali. Contoh perbaikan konkret ada di bagian CONTOH PERBAIKAN di bawah.
-PRIORITAS: HIGH
-
-TEMUAN: ${!hasMetrics ? `Hampir tidak ada metrik terukur yang ditemukan di CV ${firstName} — dari seluruh pengalaman yang dicantumkan, hanya ${metricsCount} data point numerik yang terdeteksi.` : `Ada ${metricsCount} data terukur di CV — ini lebih baik dari rata-rata, tapi masih bisa ditingkatkan untuk membuat setiap pengalaman punya dampak yang bisa diverifikasi.`}
-ANALISA: Kandidat yang mencantumkan angka spesifik mendapat 38% lebih banyak respons dari rekruter dibanding yang tidak — berdasarkan analisis database LinkedIn. Angka tidak harus sempurna: estimasi yang logis lebih baik dari klaim abstrak.
-DAMPAK: Tanpa metrik, pernyataan seperti "berhasil meningkatkan engagement" atau "mengelola tim" tidak bisa dibedakan dari klaim kandidat manapun. Kamu tidak menonjol dari tumpukan CV.
-REKOMENDASI: Tambahkan minimal satu angka per pengalaman. Jika tidak ada data eksak, gunakan range yang jujur: "±X orang", "sekitar X%", "dalam rentang X–Y bulan". ${skills.includes("Excel") || skills.includes("Google Sheets") ? "Kamu sudah punya kemampuan spreadsheet — gunakan ini untuk tracking metrik dan mendapatkan angka yang bisa dicantumkan." : ""}
-PRIORITAS: HIGH
-
-TEMUAN: Urutan dan penekanan konten CV belum tentu selaras dengan target posisi yang dituju di bidang ${industry}.
-ANALISA: CV yang efektif bukan kronologi hidup — ini adalah dokumen pemasaran yang dirancang untuk satu tujuan: lolos ke tahap wawancara. Pengalaman yang paling relevan dengan posisi target harus muncul paling awal dan mendapat porsi terbesar.
-DAMPAK: Jika pengalaman yang paling relevan terkubur di halaman 2 atau hanya mendapat 2 bullet point, rekruter yang punya 6 detik tidak akan menemukannya.
-REKOMENDASI: Identifikasi 2–3 pengalaman yang paling relevan dengan posisi target di ${industry}. Pindahkan ke atas, beri 4–5 bullet point dengan format dampak, dan kurangi porsi pengalaman yang tidak relevan ke 1–2 bullet point ringkas saja.
-PRIORITAS: HIGH
-
-TEMUAN: Bagian Skills belum terstruktur dengan cara yang optimal untuk melewati ATS (Applicant Tracking System).
-ANALISA: Mayoritas perusahaan skala menengah ke atas menggunakan ATS untuk menyaring CV sebelum ada manusia yang membacanya. ATS membaca keyword, bukan konteks — jika skill kamu tidak ditulis persis seperti yang ada di job description target, kamu tersaring secara otomatis.
-DAMPAK: CV yang tidak lolos ATS tidak pernah sampai ke meja rekruter, bahkan jika kamu adalah kandidat terbaik untuk posisi itu.
-REKOMENDASI: Buat bagian Skills yang terkategorisasi: **Technical Skills** (${skills.slice(0, 4).join(", ")}${skills.length > 4 ? ", dll." : ""}), **Soft Skills** (maks 4, yang bisa dibuktikan dengan pengalaman), dan **Languages** (jika relevan). Gunakan kata yang sama persis dengan yang ada di job description target. Hindari grafik atau bar skill yang hanya terbaca oleh manusia, bukan ATS.
-PRIORITAS: HIGH
-
-## AREA B — Audit Profil LinkedIn
+## LEVEL 1 — Audit Fondasi Profil LinkedIn
 
 ${linkedInSection}
 
-## AREA C — Strategi: Niche, Persona, dan Positioning
+---
 
-TEMUAN: ${industry !== "Profesional" ? `Berdasarkan CV, kamu berada di area ${industry}. Ini sudah menunjukkan arah — tapi positioning spesifik dalam industri ini belum terdefinisi.` : "Niche atau positioning spesifik personal brand belum terdefinisi dengan jelas dari CV yang dikirimkan."}
-ANALISA: Personal branding yang efektif bukan tentang menjadi semua untuk semua orang. Semakin sempit dan spesifik niche kamu, semakin mudah orang — termasuk rekruter — mengingat kamu untuk sesuatu yang konkret. "Saya tertarik di banyak bidang" adalah positioning yang paling lemah.
-DAMPAK: Tanpa niche yang jelas, konten kamu di LinkedIn tidak menarik audiens konsisten, dan rekruter tidak langsung mengasosiasikan nama kamu dengan keahlian tertentu.
-REKOMENDASI: Temukan intersection antara (1) apa yang kamu kuasai${skills.length > 0 ? ` — termasuk ${skills.slice(0, 3).join(", ")}` : ""}, (2) apa yang kamu sukai dan bisa kamu bicarakan dengan antusias, dan (3) apa yang dibutuhkan pasar di ${industry}. Pilih satu sudut pandang dan commit selama 90 hari.
-PRIORITAS: HIGH
+## LEVEL 2 — Audit CV: Rumus Dampak
 
-TEMUAN: Persona konten — karakter yang kamu mainkan secara konsisten di LinkedIn — belum terdefinisi.
-ANALISA: Orang follow orang, bukan CV. Persona yang jelas membuat audiens merasa terhubung dan ingin terus mengikuti perjalanan kamu. Tanpa persona, konten kamu menjadi transaksional dan tidak membangun loyalitas audiens.
-DAMPAK: Tanpa persona yang konsisten, setiap post terasa seperti post dari orang yang berbeda — audiens tidak bisa membangun ekspektasi tentang siapa kamu dan apa yang kamu tawarkan.
-REKOMENDASI: Tulis 3–5 kalimat yang menggambarkan "karakter" konten kamu: siapa kamu, apa yang kamu perjuangkan, apa yang kamu percayai, dan bagaimana gaya bicara kamu. ${careerLevel === "student" ? `Contoh untuk ${firstName}: "Mahasiswa ${major || industry} yang jujur mendokumentasikan proses belajar dan kesalahan — karena belajar dari kegagalan orang lain lebih murah dari kegagalan sendiri."` : careerLevel === "fresh_grad" ? `Contoh untuk ${firstName}: "Fresh grad ${industry} yang mendokumentasikan proses transisi dari dunia kampus ke kerja nyata — dengan semua kesulitan, keberhasilan, dan lesson learned-nya."` : `Contoh untuk ${firstName}: "Profesional ${industry} yang berbagi perspektif praktis dari lapangan — bukan teori, tapi yang benar-benar bekerja dalam pekerjaan sehari-hari."`}
-PRIORITAS: MEDIUM
+### 2.1 — Pola Kalimat & Kata Kerja
 
-TEMUAN: Content pillar — kategori konten yang akan dibuat secara konsisten — belum ada struktur yang jelas.
-ANALISA: Tanpa pillar yang dipilih di awal, setiap kali mau posting akan ada pertanyaan "mau nulis apa ya?" yang akhirnya berujung tidak posting sama sekali. Content pillar adalah menu yang sudah diputuskan sebelumnya.
-DAMPAK: Inkonsistensi posting = tidak ada momentum = tidak ada pertumbuhan follower = personal brand yang tidak berkembang dan tidak menghasilkan peluang baru.
-REKOMENDASI: Tetapkan 3–4 content pillar berdasarkan niche di ${industry}: (1) **Lesson Learned** dari pengalaman di ${companyDesc || "lingkungan profesional atau akademis"}; (2) **How-to Praktis** menggunakan ${skills.slice(0, 2).join(" atau ") || "keahlian yang kamu miliki"}; (3) **Opini tentang Tren** di industri ${industry}; (4) **Behind the Scene** proses belajar atau bekerja sehari-hari. Setiap pillar 1–2 post per minggu.
-PRIORITAS: MEDIUM
+**TEMUAN:** ${passiveCount > 0 ? `Terdeteksi **${passiveCount} penggunaan kalimat pasif** di CV ${firstName}${passiveCount >= 3 ? ` — termasuk frasa "bertanggung jawab atas", "membantu", dan "melakukan" yang muncul berulang` : ""}. ` : "Penggunaan kata pasif minimal — ini lebih baik dari rata-rata. "}${allBullets.length > 0 ? `Total ${allBullets.length} bullet point terdeteksi.` : "Bullet point perlu ditambahkan dengan format yang benar."}
 
-## AREA D — Kualitas & Keterbacaan Konten
+**ANALISA:** Rumus CV yang benar: **Kata Kerja Aksi → Objek → Hasil Terukur → Metode/Konteks**. Kalimat pasif hanya mendeskripsikan tugas — bukan membedakan kontribusimu. Rekruter yang membaca 200 CV per hari tidak punya waktu menyimpulkan dampakmu sendiri.
 
-TEMUAN: Format konten LinkedIn — jika sudah posting — kemungkinan belum dioptimalkan untuk mobile reading.
-ANALISA: Lebih dari 80% pengguna LinkedIn mengakses lewat mobile. Paragraf panjang tanpa jeda terlihat seperti dinding teks di layar kecil — dan orang akan scroll tanpa membaca, menurunkan engagement rate kamu.
-DAMPAK: Engagement rate rendah = distribusi organik rendah = personal brand yang tidak berkembang meski sudah rutin posting.
-REKOMENDASI: Gunakan format "satu kalimat = satu baris" untuk LinkedIn. Setiap 2–3 kalimat, beri baris kosong. Kalimat pembuka (hook) harus bisa berdiri sendiri dan membuat orang ingin klik "lihat selengkapnya". Panjang ideal: 150–300 kata atau 8–15 baris visible.
-PRIORITAS: MEDIUM
+**TIGA POLA BERMASALAH YANG DITEMUKAN:**
 
-TEMUAN: Call to action (CTA) di akhir konten sering tidak ada atau tidak mendorong interaksi spesifik.
-ANALISA: Setiap konten yang baik memiliki tujuan: mendapat komentar, mengajak diskusi, atau mengarahkan ke sesuatu. Tanpa CTA yang jelas, orang membaca dan pergi — tidak ada interaksi yang dihasilkan, dan algoritma tidak mendistribusikan konten kamu lebih jauh.
-DAMPAK: Komentar bernilai 4–8x lebih tinggi dari likes dalam algoritma LinkedIn. Konten tanpa komentar di 60 menit pertama akan kehilangan distribusi organik hingga 70%.
-REKOMENDASI: Akhiri setiap post dengan satu pertanyaan spesifik yang mudah dijawab. Contoh yang relevan untuk profil ${firstName}: "Pernah mengalami situasi yang sama? Share pengalaman kamu di komentar." atau "Kalau kamu di posisi ini, apa yang akan kamu lakukan berbeda?" Buat engagementnya semudah mungkin.
-PRIORITAS: MEDIUM
+| # | Pola | Contoh Dari CV | Solusi |
+|---|------|----------------|--------|
+| 1 | Kata kerja pasif | ${weakBullets.length > 0 ? `"${weakBullets[0].slice(0, 60)}..."` : '"Bertanggung jawab atas..."'} | Ganti kata kerja dampak: Mengembangkan, Memimpin, Meningkatkan |
+| 2 | Tidak ada angka | Klaim tanpa data kuantitatif | Tambahkan: berapa orang, berapa %, berapa bulan, berapa budget |
+| 3 | Deskripsi terlalu singkat | Bullet 1–5 kata tanpa konteks | Perluas: Kata Kerja + Objek + Hasil + Konteks |
 
-## AREA E — Metrik & Algoritma
+**ASET TERSEMBUNYI DI CV INI:**
+${gpa ? `- IPK ${gpa} dari ${university || "universitas"} — angka konkret yang memperkuat narasi` : ""}
+${companies.length > 0 ? companies.map((c) => `- Pengalaman di ${c} — nama brand dengan nilai sinyal kepada rekruter`).join("\n") : ""}
+${skills.length > 0 ? `- Skill ${skills.slice(0, 4).join(", ")} — keyword ATS yang sudah ada, tapi belum diekspos optimal` : ""}
+${gpa || companies.length > 0 || skills.length > 0 ? "" : "- Setiap pengalaman yang dicantumkan mengandung cerita yang belum diekstrak sepenuhnya"}
 
-TEMUAN: Belum ada sistem untuk mengukur pertumbuhan personal brand ${firstName} secara objektif dan berkala.
-ANALISA: Tanpa metrik, tidak ada cara untuk tahu apakah strategi yang dijalankan bekerja atau tidak. "Rasanya sudah banyak posting" bukan data — dan keputusan berdasarkan perasaan menghasilkan hasil yang tidak konsisten.
-DAMPAK: Waktu dan energi terbuang untuk aktivitas yang tidak menghasilkan, sementara yang benar-benar bekerja tidak diulang dan di-scale.
-REKOMENDASI: Pantau 5 metrik ini setiap minggu di spreadsheet sederhana${skills.includes("Excel") || skills.includes("Google Sheets") ? ` (kamu sudah punya ${skills.includes("Excel") ? "Excel" : "Google Sheets"} — gunakan ini)` : ""}: (1) jumlah follower, (2) rata-rata impressions per post, (3) engagement rate (komentar + likes ÷ impressions), (4) jumlah connection request masuk, (5) jumlah pesan atau tawaran peluang yang diterima. Review bulanan untuk identifikasi pola.
-PRIORITAS: MEDIUM
+**DAMPAK:** ${passiveCount >= 3 ? `Dengan ${passiveCount} kalimat pasif, CV ${firstName} bercerita tentang apa yang dilakukan — bukan apa yang dicapai. Ini menempatkan kandidat di kategori "average" dalam 6 detik pertama screening rekruter.` : "Setiap kalimat pasif adalah peluang yang hilang untuk menunjukkan nilai nyata kepada rekruter."}
 
-TEMUAN: Algoritma LinkedIn memberikan bobot berbeda untuk jenis interaksi dan waktu posting.
-ANALISA: Komentar bernilai jauh lebih tinggi dari likes. Konten yang mendapat komentar di 30–60 menit pertama ("golden window") akan didistribusikan secara organik jauh lebih luas. Membalas komentar juga melipatgandakan distribusi karena setiap balasan memicu notifikasi tambahan.
-DAMPAK: Posting di waktu yang salah atau tidak aktif di 1 jam pertama bisa mengurangi jangkauan konten secara signifikan meski kontennya berkualitas tinggi.
-REKOMENDASI: Posting di peak time: Selasa–Kamis, 07.00–09.00 atau 12.00–13.00 WIB. Sebelum posting, engage dengan 5–10 post orang lain agar algoritma melihat kamu "aktif". Setelah posting, balas setiap komentar dalam 1 jam pertama — ini yang paling menentukan distribusi organik konten kamu.
-PRIORITAS: LOW
+**REKOMENDASI:** Terapkan rumus dampak untuk **setiap** bullet point. Rewrite lengkap ada di bagian 4D.
+
+**PRIORITAS: 🔴 SANGAT TINGGI**
+
+---
+
+### 2.2 — Metrik & Kuantifikasi
+
+**TEMUAN:** ${!hasMetrics ? `Hampir tidak ada metrik terukur — hanya **${metricsCount} data point numerik** yang terdeteksi di seluruh CV.` : `Ada **${metricsCount} data terukur** — fondasi ada, tapi masih bisa ditingkatkan signifikan.`}
+
+**ANALISA:** Kandidat yang mencantumkan angka spesifik mendapat 38% lebih banyak respons dari rekruter (berdasarkan analisis LinkedIn). Angka tidak harus sempurna — estimasi yang logis selalu lebih baik dari klaim abstrak.
+
+**DAMPAK:** Tanpa metrik, pernyataan seperti "meningkatkan engagement" atau "mengelola tim" tidak bisa dibedakan dari klaim kandidat manapun.
+
+**REKOMENDASI:** Untuk setiap pengalaman, jawab minimal satu: berapa orang terdampak? berapa % perubahannya? berapa budget? dalam berapa bulan? Lihat contoh konkret di bagian 4D.
+
+**PRIORITAS: 🔴 TINGGI**
+
+---
+
+### 2.3 — Struktur & Urutan
+
+**TEMUAN:** Urutan dan penekanan konten CV belum tentu selaras dengan prioritas rekruter di bidang ${industry}.
+
+**ANALISA:** CV yang efektif bukan kronologi hidup — ini dokumen pemasaran dengan satu tujuan: lolos ke tahap wawancara. Pengalaman yang paling relevan dengan posisi target harus muncul pertama dan mendapat porsi terbesar.
+
+**DAMPAK:** Pengalaman paling relevan yang terkubur di halaman 2 tidak akan ditemukan rekruter yang punya 6 detik untuk screening.
+
+**REKOMENDASI:** Identifikasi 2–3 pengalaman paling relevan dengan target posisi ${industry}. Pindahkan ke atas, beri 4–5 bullet point format dampak, kurangi porsi pengalaman tidak relevan ke 1–2 bullet ringkas.
+
+**PRIORITAS: 🟡 SEDANG**
+
+---
+
+### 2.4 — Skills & ATS Optimization
+
+**TEMUAN:** ${skills.length >= 6 ? `${skills.length} skill terdeteksi: ${skills.join(", ")}. Perlu dipastikan penulisannya sesuai keyword di job description.` : skills.length > 0 ? `Hanya ${skills.length} skill terdeteksi: ${skills.join(", ")}. Perlu diperkuat.` : "Bagian Skills tidak terdeteksi atau sangat minim — ini gap kritis."}
+
+**ANALISA:** Mayoritas perusahaan skala menengah ke atas menggunakan ATS untuk menyaring CV. ATS membaca keyword, bukan konteks. Jika skillmu tidak ditulis persis seperti yang ada di job description, kamu tersaring otomatis.
+
+**DAMPAK:** CV yang tidak lolos ATS tidak pernah sampai ke rekruter, bahkan jika kamu kandidat terbaik.
+
+**REKOMENDASI:** Buat Skills section terkategorisasi:
+- **Technical Skills:** ${skills.slice(0, 5).join(", ")}${skills.length > 5 ? `, +${skills.length - 5} lainnya` : ""}
+- **Soft Skills:** maksimal 4, yang bisa dibuktikan dengan pengalaman konkret
+- **Languages:** bahasa yang dikuasai beserta level (Basic/Intermediate/Fluent/Native)
+
+Hindari grafik atau bar skill — ATS hanya bisa membaca teks.
+
+**PRIORITAS: 🔴 TINGGI**
+
+---
+
+## LEVEL 3 — Audit Strategi: Niche, Persona & Content Pillar
+
+### 3.1 — Niche & Positioning
+
+**TEMUAN:** ${industry !== "Profesional" ? `Berdasarkan CV, ${firstName} berada di area ${industry}. Arah sudah terlihat — tapi positioning spesifik dalam industri ini belum terdefinisi tajam.` : "Niche atau positioning spesifik personal brand belum terdefinisi jelas dari CV yang dikirimkan."}
+
+**ANALISA:** Personal branding yang efektif bukan tentang menjadi segalanya untuk semua orang. Semakin sempit niche, semakin mudah orang — termasuk rekruter — mengingat kamu untuk sesuatu yang konkret.
+
+**DAMPAK:** Tanpa niche yang jelas, konten LinkedIn tidak menarik audiens konsisten, dan rekruter tidak mengasosiasikan nama kamu dengan keahlian tertentu.
+
+**REKOMENDASI:** Temukan intersection antara:
+1. **Apa yang dikuasai** ${skills.length > 0 ? `— ${skills.slice(0, 3).join(", ")}` : ""}
+2. **Apa yang disukai** — bisa dibicarakan dengan antusias tanpa persiapan
+3. **Apa yang dibutuhkan pasar** — ada demand di ${industry}
+
+Pilih satu sudut pandang dan commit 90 hari. Kalimat positioning ada di bagian 4A.
+
+**PRIORITAS: 🔴 TINGGI**
+
+---
+
+### 3.2 — Persona Konten
+
+**TEMUAN:** Persona konten — karakter yang dimainkan secara konsisten di LinkedIn — belum terdefinisi.
+
+**ANALISA:** Orang follow orang, bukan CV. Persona yang jelas membuat audiens terhubung dan ingin terus mengikuti perjalanan.
+
+**REKOMENDASI:** Tulis 3–5 kalimat yang menggambarkan karakter kontenmu: siapa kamu, apa yang diperjuangkan, apa yang dipercayai, bagaimana gaya bicara.
+
+Contoh persona untuk ${firstName}:
+${careerLevel === "student"
+  ? `*"Mahasiswa ${major || industry} yang jujur mendokumentasikan proses belajar dan kesalahan — karena belajar dari kegagalan orang lain lebih murah dari kegagalan sendiri."*`
+  : careerLevel === "fresh_grad"
+  ? `*"Fresh grad ${industry} yang mendokumentasikan transisi dari dunia kampus ke kerja nyata — dengan semua kesulitan, keberhasilan, dan lesson learned-nya."*`
+  : `*"Profesional ${industry} yang berbagi perspektif praktis dari lapangan — bukan teori, tapi yang benar-benar bekerja dalam pekerjaan nyata sehari-hari."*`}
+
+**PRIORITAS: 🟡 SEDANG**
+
+---
+
+### 3.3 — Content Pillar
+
+**TEMUAN:** Content pillar — kategori konten yang dibuat secara konsisten — belum ada struktur yang jelas.
+
+**ANALISA:** Tanpa pillar yang dipilih di awal, setiap kali mau posting akan ada pertanyaan "mau nulis apa ya?" yang berujung tidak posting sama sekali.
+
+**REKOMENDASI:**
+
+| Pillar | Deskripsi | Contoh Topik | Frekuensi |
+|--------|-----------|-------------|-----------|
+| Lesson Learned | Pengalaman nyata dari ${companyDesc || "lingkungan profesional/akademis"} | "Hal yang tidak ada yang ceritakan tentang bekerja di ${companies[0] || industry}" | 1×/minggu |
+| How-to Praktis | Tutorial/framework menggunakan ${skills.slice(0, 2).join(" atau ") || "keahlian yang dimiliki"} | "Framework [X langkah] untuk [masalah spesifik]" | 1×/minggu |
+| Opini Industri | Sudut pandang tentang tren ${industry} | "Hot take: [pernyataan kontroversi tapi berdasar]" | 2×/bulan |
+| Behind the Scene | Proses belajar atau bekerja sehari-hari | "Timeline jujur perjalanan saya dari [titik awal] ke posisi sekarang" | 2×/bulan |
+
+**PRIORITAS: 🟡 SEDANG**
+
+---
+
+## LEVEL 4 — Audit Konten & Format
+
+**TEMUAN:** Format konten LinkedIn — jika sudah posting — kemungkinan belum dioptimalkan untuk mobile reading.
+
+**ANALISA:** Lebih dari 80% pengguna LinkedIn mengakses lewat mobile. Paragraf panjang tanpa jeda terlihat seperti dinding teks di layar kecil.
+
+**DAMPAK:** Engagement rate rendah → distribusi organik rendah → personal brand tidak berkembang meski sudah rutin posting.
+
+**REKOMENDASI — Formula Konten yang Bekerja di LinkedIn:**
+1. **Hook** — 1 kalimat yang bikin orang berhenti scroll
+2. **Konteks** — 2–3 kalimat, kenapa ini penting
+3. **Isi utama** — list atau paragraf pendek, satu kalimat per baris
+4. **Insight/Pelajaran** — 1–2 kalimat
+5. **CTA** — 1 pertanyaan spesifik yang mudah dijawab
+
+**CHECKLIST KONTEN LINKEDIN:**
+
+| Area | Target | Tindakan |
+|------|--------|----------|
+| Foto profil | Profesional, latar bersih, ≥400×400px | Upload foto terbaru |
+| Banner | Custom (bukan default biru) | Buat di Canva 1584×396px |
+| Headline | Formula [Keahlian]\|[Nilai]\|[Industri] | Gunakan opsi dari 4B |
+| About | Hook kuat di kalimat pertama | Gunakan draf dari 4C |
+| Pengalaman | Semua pakai format dampak | Salin dari 4D |
+| Skills | Min 10 skill, ada endorsement | Tambahkan dari list di CV |
+| Posting | 2–3×/minggu, konsisten | Mulai dari konten di 4J |
+| Engagement | Balas komentar dalam 1 jam | Set notifikasi LinkedIn |
+
+**PRIORITAS: 🟡 SEDANG**
+
+---
+
+## LEVEL 5 — Audit Metrik & Algoritma
+
+**TEMUAN:** Belum ada sistem untuk mengukur pertumbuhan personal brand ${firstName} secara objektif.
+
+**ANALISA:** Tanpa metrik, tidak ada cara tahu apakah strategi yang dijalankan bekerja atau tidak.
+
+**REKOMENDASI — 5 Metrik Wajib Dipantau Tiap Minggu:**
+
+| # | Metrik | Target Bulan 1 | Target Bulan 3 |
+|---|--------|---------------|---------------|
+| 1 | Jumlah follower | +50 | +200 |
+| 2 | Rata-rata impressions/post | >200 | >500 |
+| 3 | Engagement rate | >2% | >5% |
+| 4 | Connection request masuk | 5/minggu | 15/minggu |
+| 5 | Pesan/peluang masuk | 1/bulan | 3/bulan |
+
+**Cara Kerja Algoritma LinkedIn:**
+- Komentar bernilai 4–8× lebih tinggi dari likes
+- "Golden window" 30–60 menit pertama menentukan distribusi
+- Posting optimal: Selasa–Kamis, 07.00–09.00 atau 12.00–13.00 WIB
+- Balas setiap komentar dalam 1 jam pertama
+- Engage dengan 5–10 post orang lain sebelum posting
+
+**PRIORITAS: 🟡 SEDANG**
+
+---
 
 # CONTOH PERBAIKAN KONKRET
 
-${sebelumSesudah.slice(0, 5).map((pair, i) => `## Pengalaman ${i + 1}\n\n${pair}`).join("\n\n")}
+## 4A — Kalimat Positioning
 
-## Ringkasan / Headline Profil
+Digunakan di cover letter, About LinkedIn, dan saat perkenalan networking:
 
-SEBELUM: "${careerLevel === "student" ? `Mahasiswa ${major || "aktif"} di ${university || "Universitas"} yang memiliki minat di berbagai bidang dan ingin berkembang.` : `${degree || "Lulusan"} ${university || "Universitas"} yang mencari peluang baru di bidang ${industry}.`}"
+> *"Saya ${name} — ${levelLabel[careerLevel].toLowerCase()} di bidang ${industry}${eduDesc ? ` dengan ${gpa ? `IPK ${gpa} dari ${university || "universitas"}` : `background dari ${university || "institusi pendidikan"}`}` : ""}. ${companyDesc ? `Rekam jejak saya mencakup pengalaman di ${companyDesc}` : "Saya membawa pengalaman langsung dari lapangan"}${skills.length > 0 ? `, dengan keahlian di ${skills.slice(0, 3).join(", ")}` : ""}. Saya tidak datang untuk sekadar mengisi posisi — saya datang dengan track record nyata dan kemampuan yang siap berkontribusi dari hari pertama."*
 
-SESUDAH: "${careerLevel === "student" ? `${skills.length > 0 ? skills[0] : industry.split(" ")[0]} Student${university ? ` @ ${university}` : ""} | ${skills.length > 1 ? skills.slice(1, 3).join(" & ") : "Passionate Learner"} | Open to Internship & Collaboration` : `${skills.length > 0 ? skills[0] : industry.split(" ")[0]} ${careerLevel === "junior" || careerLevel === "fresh_grad" ? "Enthusiast" : "Professional"} | ${companyDesc ? `Ex-${companies[0]}` : industry.split(" ")[0]} | Helping ${industry.split(" ")[0]} teams deliver measurable results`}"
+**Versi pendek (elevator pitch 30 detik):**
 
-## Kalimat Positioning
+> *"${firstName}, ${industry} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "graduate" : "professional"}${university ? ` dari ${university}` : ""}. Spesialisasi: ${skills.length > 0 ? skills.slice(0, 2).join(" dan ") : industry.split(" & ")[0]}${companyDesc ? `. Experience di ${companyDesc}` : ""}."*
 
-"Saya ${name} — ${levelLabel[careerLevel].toLowerCase()} di bidang ${industry} dengan ${gpa ? `IPK ${gpa} dari ${university || "universitas"}` : `latar belakang dari ${university || "institusi pendidikan saya"}`}. Saya tidak datang untuk sekadar mengisi posisi — saya datang dengan ${skills.length > 0 ? `kemampuan ${skills.slice(0, 3).join(", ")}` : "kemampuan yang siap langsung dipakai"} dan track record nyata yang bisa langsung berkontribusi dari hari pertama."
+---
+
+## 4B — Headline LinkedIn (3 Opsi)
+
+**Opsi 1 — Fokus Keahlian:**
+> *"${skill1} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "Enthusiast" : "Professional"} | ${industry.split(" & ")[0]} | ${skill2 !== skill1 ? skill2 : skills[2] || "Problem Solver"} | ${university ? university.split(" ").slice(-1)[0] : "Passionate Learner"}"*
+
+**Opsi 2 — Fokus Nilai/Dampak:**
+> *"Membantu ${industry.split(" & ")[0]} teams ${industry.includes("Marketing") ? "grow & convert" : industry.includes("Teknologi") ? "build & ship faster" : industry.includes("Keuangan") ? "manage risk & optimize" : "deliver real results"} | ${skill1} | ${careerLevel === "student" || careerLevel === "fresh_grad" ? "Open to Opportunities" : "Open to New Challenges"}"*
+
+**Opsi 3 — Fokus Journey:**
+> *"${careerLevel === "student" ? `Mahasiswa ${major || industry.split(" & ")[0]}` : careerLevel === "fresh_grad" ? `Fresh Graduate ${industry.split(" & ")[0]}` : `${industry.split(" & ")[0]} Professional`}${university ? ` @ ${university.split(" ").slice(-1)[0]}` : ""} | Building ${skill1 !== skill2 ? `${skill1} + ${skill2}` : skill1} for ${industry.split(" & ")[0]} | Let's connect"*
+
+*PROVISIONAL — sesuaikan dengan kondisi aktual profil LinkedIn kamu*
+
+---
+
+## 4C — Draf Bagian About / Summary LinkedIn
+
+*Gunakan draf ini sebagai basis, sesuaikan dengan detail konkret dari pengalamanmu.*
+
+---
+
+**[WHO]**
+Saya ${name} — ${levelLabel[careerLevel].toLowerCase()} di bidang ${industry}${university ? ` dengan background dari ${university}${gpa ? ` (IPK ${gpa})` : ""}` : ""}.
+
+**[WHAT]**
+${companyDesc ? `Selama di ${companyDesc}, saya belajar bahwa [pelajaran terbesar]. Pengalaman ini membentuk cara saya [pendekatan kerja spesifik].` : `Selama perjalanan di ${industry}, saya belajar bahwa [tuliskan pelajaran terbesar yang membentuk cara kerjamu].`}
+
+Yang saya bawa ke setiap pekerjaan: ${skills.length > 0 ? `kemampuan ${skills.slice(0, 3).join(", ")}` : "kemampuan teknis yang relevan"} dikombinasikan dengan [tambahkan: soft skill yang bisa dibuktikan dengan cerita nyata].
+
+**[WHY]**
+Saya percaya bahwa ${industry.includes("Teknologi") ? "teknologi yang baik adalah yang menyelesaikan masalah nyata, bukan yang terlihat keren di atas kertas" : industry.includes("Marketing") ? "marketing yang baik dimulai dari memahami manusia, bukan algoritma" : industry.includes("Keuangan") ? "keuangan yang baik adalah tentang membuat keputusan dengan data yang benar di waktu yang tepat" : "[tuliskan filosofi kerjamu dalam satu kalimat]"}.
+
+**[CTA]**
+Saya sedang [mencari peluang baru di / terbuka untuk kolaborasi di] ${industry}. Jika kamu ${industry.includes("Teknologi") ? "sedang build sesuatu yang meaningful" : industry.includes("Marketing") ? "punya tantangan growth yang belum terpecahkan" : "butuh partner yang bisa deliver"} — let's talk.
+
+📩 DM atau email saya di [email kamu]
+
+---
+
+*PROVISIONAL — sesuaikan dengan kondisi aktual dan voice aslimu*
+
+---
+
+## 4D — Penulisan Ulang Seluruh Poin Pengalaman
+
+*Rewrite untuk setiap bullet point yang terdeteksi di CV. Isi [tanda kurung] dengan data nyata dari pengalamanmu.*
+
+${bulletRewrites.join("\n\n---\n\n")}
+
+${bulletRewrites.length <= 3 ? `\n*Catatan: Hanya ${allBullets.length} bullet point terdeteksi. Jika CV lebih panjang, pastikan teks CV sudah di-paste lengkap. Untuk setiap poin tambahan, gunakan pola: Kata Kerja Dampak + Objek + Hasil Terukur + Konteks.*` : ""}
+
+---
+
+## 4E — Draf Konten LinkedIn Lengkap
+
+*Post perdana yang bisa langsung digunakan — edit sesuai detail nyatamu.*
+
+---
+
+Saya pernah salah paham tentang ${industry.split(" & ")[0]}.
+
+Saya pikir yang paling penting adalah [skill teknis atau teori yang dipelajari di awal].
+
+Ternyata saya salah.
+
+Yang paling menentukan adalah cara kamu [insight yang kamu punya setelah pengalaman nyata].
+
+${companyDesc ? `Di ${companyDesc}, saya belajar ini secara langsung:` : "Dari pengalaman langsung, saya belajar:"}
+
+→ [Pelajaran 1 yang konkret dan spesifik]
+→ [Pelajaran 2 yang mengubah cara kerjamu]
+→ [Pelajaran 3 yang tidak akan kamu temukan di buku teks]
+
+Dan ini yang akan saya sampaikan ke diri sendiri 2 tahun lalu:
+
+[1–2 kalimat saran yang paling berharga]
+
+Kamu sedang di fase mana sekarang?
+
+---
+
+*Format: text post 150–250 kata. Posting Selasa atau Rabu, 07.30–08.30 WIB. Balas semua komentar dalam 1 jam pertama.*
+
+---
+
+## 4F — Bank Ide Hook (15 Hook Siap Pakai)
+
+*Hook adalah kalimat pembuka yang menentukan apakah orang berhenti scroll atau tidak.*
+
+| # | Hook | Tipe |
+|---|------|------|
+${hookRows.map((h) => `| ${h.no} | ${h.hook} | ${h.tipe} |`).join("\n")}
+
+---
+
+## 4G — Mengubah Aset Jadi Jasa Berbayar
+
+*Setelah membangun personal brand yang kuat di ${industry}, inilah cara monetisasinya.*
+
+| Paket | Isi | Kisaran Harga | Target Klien |
+|-------|-----|--------------|-------------|
+| Konsultasi 1:1 | Review CV + LinkedIn 30 menit, feedback langsung, recording | Rp 299.000–499.000/sesi | Kandidat aktif mencari kerja di ${industry} |
+| Template & Resource | Template CV format dampak, headline LinkedIn, bank ide konten | Rp 49.000–99.000/bundle | Fresh grad dan career switcher |
+| Workshop Online | Workshop 2 jam Personal Branding ${industry} — live Q&A | Rp 150.000–250.000/orang | Komunitas profesional ${industry} |
+| Jasa Review CV | Audit CV tertulis dengan BEFORE/AFTER setiap bullet point | Rp 199.000–349.000/dokumen | Profesional yang tidak sempat revisi sendiri |
+
+*Mulai dari paket paling sederhana (Template & Resource) untuk memvalidasi demand sebelum investasi waktu lebih besar.*
+
+---
+
+## 4H — Skrip Siap Pakai
+
+**Cold DM ke Rekruter:**
+
+> "Halo [Nama Rekruter], saya [nama] — ${levelLabel[careerLevel].toLowerCase()} di bidang ${industry}${university ? ` dengan background ${university}` : ""}. Saya menemukan profil Anda karena sering membahas [topik relevan]. Saya tertarik pada posisi [nama posisi] di [perusahaan]. Boleh saya tanya 15 menit untuk belajar lebih tentang tim dan budaya kerja di sana?"
+
+**Perkenalan di Networking Event:**
+
+> "Halo, saya ${firstName}. Saya bekerja di bidang ${industry}${skills.length > 0 ? `, spesifik di ${skills.slice(0, 2).join(" dan ")}` : ""}${companyDesc ? `. Sebelumnya di ${companyDesc}` : ""}. Kamu di bidang apa?"
+
+**Follow-up Setelah Interview:**
+
+> "Halo [Nama], terima kasih atas kesempatan diskusi kemarin. Saya makin antusias dengan [sesuatu spesifik yang dibahas]. Satu hal yang ingin saya tambahkan: [poin yang lupa disampaikan, maksimal 2 kalimat]. Saya nantikan kabar selanjutnya."
+
+---
+
+## 4I — Draf About Alternatif (Jalur Karir)
+
+*Versi untuk ${firstName} yang sedang career switching atau ingin menonjolkan angle berbeda.*
+
+---
+
+Ada momen ketika saya sadar bahwa [insight yang mengubah arah].
+
+Sebelumnya saya di [latar belakang sebelumnya]. Tapi satu pengalaman di [konteks] membuat saya melihat ${industry} dari sudut pandang yang berbeda.
+
+Sejak itu, saya fokus membangun keahlian di [area spesifik] — dan hasilnya: [pencapaian konkret atau progress terukur].
+
+Hari ini saya ${levelLabel[careerLevel].toLowerCase()} yang [deskripsi singkat apa yang dilakukan sekarang].
+
+Yang membedakan saya: [unique value proposition yang tidak bisa dikopas kandidat lain].
+
+📩 Terbuka untuk [jenis peluang yang dicari] — let's connect.
+
+---
+
+## 4J — Kalender Konten 4 Minggu
+
+| Minggu | Hari | Tipe Konten | Topik | Format | CTA |
+|--------|------|------------|-------|--------|-----|
+${calendarRows.map((c) => `| ${c.minggu} | ${c.hari} | ${c.tipe} | ${c.topik} | ${c.format} | ${c.cta} |`).join("\n")}
+
+*Tips: Siapkan semua 8 post di akhir pekan sebelum mulai. Engagement tertinggi biasanya di Post Minggu 1 (perkenalan) dan Minggu 3 (behind the scene).*
+
+---
+
+## 4K — Tiga Hambatan Mental
+
+Berdasarkan pola di level ${levelLabel[careerLevel]}, inilah tiga hambatan yang paling sering muncul:
+
+**Hambatan 1: "Saya belum cukup ahli untuk posting tentang ${industry}"**
+
+Kamu tidak harus jadi expert untuk berbagi. Audiens paling terhubung dengan perjalanan, bukan kesempurnaan. Post tentang apa yang sedang kamu pelajari hari ini — itu lebih berharga dari teori yang sudah dikuasai expert.
+
+*Solusi:* Ganti framing dari "saya harus mengajar" ke "saya mendokumentasikan perjalanan". Satu post per minggu tentang satu hal yang baru dipelajari.
+
+**Hambatan 2: "Tidak ada yang tertarik dengan cerita saya"**
+
+Data mengatakan sebaliknya: konten yang paling tinggi engagement di LinkedIn adalah konten personal dan jujur. Orang follow orang, bukan CV.
+
+*Solusi:* Ingat bahwa ada ribuan orang di level yang sama denganmu yang butuh melihat bahwa seseorang berhasil melewati fase yang mereka jalani. Kamu adalah bukti nyata itu.
+
+**Hambatan 3: "Saya takut dikritik atau dihakimi"**
+
+Kebanyakan orang terlalu sibuk dengan masalah mereka sendiri untuk mengkritik kamu. Dan yang mengkritik? Itu sinyal kontenmu cukup kuat untuk memancing reaksi — yang berarti distribusi algoritma yang lebih tinggi.
+
+*Solusi:* Buat aturan: publish dulu, edit mindset kemudian. Setiap post yang dipublish adalah data — yang tidak dipublish tidak menghasilkan apapun.
+
+---
 
 # RENCANA EKSEKUSI
 
 ## Minggu 1 — Benahi Etalase
 
-${week1Tasks.map((t) => `- ${t}`).join("\n")}
+${week1Tasks.map((t) => `- [ ] ${t}`).join("\n")}
 
 ## Minggu 2–4 — Mulai Posting
 
-- Post pertama: perkenalan diri dengan format storytelling — bukan bio, tapi cerita tentang mengapa kamu memilih ${industry} dan apa yang kamu pelajari${companyDesc ? ` dari pengalaman di ${companyDesc}` : ""}
-- Jadwal posting: 2–3x per minggu, hari Selasa/Rabu/Kamis, jam 07.30 atau 12.00 WIB
-- Gunakan 3 content pillar yang sudah dipilih: rotasi agar tidak monoton
-- Balas SEMUA komentar dalam 1 jam pertama setelah posting
-- Engage dengan 10 post orang lain setiap hari (komentar bermakna, bukan "great post!")
-- Kirimkan 5 connection request per hari ke orang yang relevan dengan karier target kamu
-- Buat template visual Canva agar tampilan konten konsisten dan on-brand
+- [ ] Publish Post 1: perkenalan storytelling dari template di bagian 4E
+- [ ] Jadwal posting: Selasa dan Kamis, jam 07.30 atau 12.00 WIB
+- [ ] Gunakan 4 content pillar dari bagian 3.3 — rotasi agar tidak monoton
+- [ ] Balas SEMUA komentar dalam 1 jam pertama setelah posting
+- [ ] Engage dengan 5–10 post orang lain setiap hari (komentar bermakna)
+- [ ] Kirim 5 connection request per hari ke orang relevan dengan target karier
+- [ ] Track metrik mingguan di spreadsheet: follower, impressions, engagement, koneksi masuk
 
-## Bulan 2–3 — Iterasi & Evaluasi
+## Bulan 2–3 — Iterasi & Scale
 
-- Review performa konten mingguan: post mana yang paling banyak impressions dan komentar?
-- Identifikasi pola: topik apa, format apa, waktu apa yang paling perform untuk audiens kamu?
-- Double down pada yang berhasil, hentikan yang tidak menghasilkan setelah 4x percobaan
-- Mulai lamar 3–5 posisi per minggu menggunakan CV yang sudah diperbarui
-- Track semua lamaran dalam spreadsheet${skills.includes("Excel") || skills.includes("Google Sheets") ? ` (gunakan ${skills.includes("Excel") ? "Excel" : "Google Sheets"} yang sudah kamu kuasai)` : ""}: perusahaan, posisi, tanggal, status, PIC
-- Perbarui CV setiap 2 minggu berdasarkan feedback dari proses lamaran
-- Target bulan 3: LinkedIn follower naik min 30%, connection +100, respons lamaran min 15%
-
-# SKOR AKHIR
-
-| Area | Skor | Catatan |
-|------|------|---------|
-| Fondasi Profil LinkedIn | ${liScore} / 20 | ${hasLinkedin ? "URL ada, tapi perlu audit mendalam pada headline, About, dan visual" : "Tidak ada URL LinkedIn — ini prioritas tertinggi yang harus diselesaikan minggu ini"} |
-| CV & Impact | ${cvScore} / 20 | ${hasMetrics ? `Ada ${metricsCount} metrik — fondasi bagus, perlu ditambah dan dikuatkan` : "Hampir tidak ada angka terukur — setiap pengalaman butuh minimal 1 data point konkret"} |
-| Niche & Positioning | ${nicheScore} / 15 | ${industry !== "Profesional" ? `Arah ${industry} sudah terlihat, tapi positioning spesifik dalam industri ini belum tajam` : "Positioning belum terdefinisi, terlalu general untuk satu niche yang diingat orang"} |
-| Content Pillar | ${contentScore} / 10 | Pillar belum terdefinisi — tanpa ini, konsistensi posting tidak akan terjaga |
-| Kualitas Konten | ${qualScore} / 20 | ${skills.length >= 5 ? `${skills.length} skill terdeteksi — ada bahan konten yang kuat, tapi format komunikasinya belum dioptimalkan` : skills.length >= 2 ? `Beberapa skill terdeteksi (${skills.slice(0, 3).join(", ")}), perlu dikembangkan lebih jauh` : "Bagian skills perlu diperkuat sebagai fondasi konten dan keyword ATS"} |
-| Strategi Metrik | ${metricScore} / 15 | Belum ada sistem pengukuran aktif untuk tracking pertumbuhan personal brand |
-| **TOTAL** | **${totalScore} / 100** | **${totalScore >= 60 ? "Fondasi kuat, fokus pada optimasi komunikasi dan konsistensi konten" : totalScore >= 40 ? "Fondasi ada, diperlukan upgrade signifikan pada eksekusi dan komunikasi dampak" : "Titik awal yang jelas — ada 100 − " + totalScore + " poin yang bisa dikejar dalam 90 hari"}** |
-
-Angka ini bukan penilaian final — ini titik awal yang jujur. Skor ${totalScore}/100 berarti ada ${100 - totalScore} poin yang bisa kamu raih dalam 90 hari ke depan dengan eksekusi yang konsisten. Kandidat di level ${levelLabel[careerLevel]} yang mengikuti rencana di laporan ini biasanya melihat peningkatan 25–35 poin dalam satu kuartal — dan yang lebih penting: mulai mendapat respons lamaran dan pesan masuk dari rekruter.
-
-# IDE KONTEN SIAP PAKAI
-
-## Pilar Story (cerita pengalaman)
-
-${contentIdeas.map((idea, i) => `${i + 1}. ${idea}`).join("\n")}
-${companies.length > 0 ? `${contentIdeas.length + 1}. "Hal yang tidak ada yang ceritakan tentang bekerja di ${companies[0]} — dan yang membuat saya tumbuh paling cepat"` : ""}
-${companyDesc ? `${contentIdeas.length + 2}. "Kesalahan terbesar yang saya buat selama di ${companyDesc} — dan bagaimana saya memperbaikinya"` : ""}
-${contentIdeas.length + 3}. "Timeline jujur perjalanan saya dari [titik awal] ke posisi saat ini — termasuk bagian yang tidak terlihat di LinkedIn"
-${contentIdeas.length + 4}. "Momen ketika saya hampir menyerah — dan kenapa saya tetap lanjut"
-
-## Pilar How-to (panduan praktis)
-
-1. ${skills.length > 0 ? `"Cara saya menggunakan ${skills[0]} untuk [tugas spesifik di ${industry}] — template gratis di komentar"` : `"Framework yang saya pakai untuk menyelesaikan [tugas spesifik] dalam [X waktu] — step by step"`}
-2. ${skills.length > 1 ? `"Workflow ${skills[0]} + ${skills[1]} yang menghemat [X jam] per minggu di pekerjaan saya"` : `"5 kesalahan yang paling sering saya lihat di CV fresh grad Indonesia — dan cara mudah memperbaikinya"`}
-3. "Cara mempersiapkan interview untuk posisi di bidang ${industry} dalam 48 jam — yang benar-benar bekerja"
-4. "Checklist yang saya gunakan sebelum submit lamaran kerja apapun (simpan ini untuk dipakai)"
-5. "Panduan networking LinkedIn untuk introvert yang tidak suka basa-basi — dari yang sudah mencoba"
-
-## Pilar Insight (sudut pandang)
-
-1. ${gpa ? `"Hot take: IPK ${gpa} tidak menjamin karier yang baik — tapi ini yang benar-benar penting menurut saya"` : `"Hot take: gelar akademik tidak menjamin karier yang baik — ini yang lebih menentukan menurut pengalaman saya"`}
-2. "Kenapa saya berhenti mengejar 'pengalaman' dan mulai mengejar 'hasil terukur' — dan apa yang berubah"
-3. "Yang tidak diajarkan ${university ? university : "kampus"} tentang dunia ${industry} nyata — dari pengalaman pertama saya"
-4. ${industry !== "Profesional" ? `"Tren yang saya lihat di industri ${industry} yang belum banyak dibicarakan orang"` : `"Perdebatan: apakah magang wajib untuk fresh grad? Pandangan saya setelah menjalaninya sendiri"`}
-
-# PERTANYAAN WAWANCARA
-
-**"Ceritakan tentang diri kamu."**
-→ Ini bukan pertanyaan tentang hidup kamu — ini tentang relevansi kamu untuk posisi ini. Untuk ${firstName}: (1) "${levelLabel[careerLevel]} di bidang ${industry}${university ? `, background dari ${university}` : ""}"; (2) Perjalanan singkat paling relevan dengan posisi yang dilamar; (3) "Itu sebabnya saya tertarik dengan posisi ini." Maksimal 90 detik. Latih sampai terdengar natural, bukan hafalan.
-
-**"Apa kelebihan dan kekurangan terbesar kamu?"**
-→ Untuk kelebihan: pilih yang bisa dibuktikan dengan contoh nyata — ${skills.length > 0 ? `misalnya kemampuan ${skills[0]} yang bisa langsung kamu demonstrasikan dengan hasil konkret` : "pilih yang punya bukti nyata, bukan klaim abstrak"}. Untuk kekurangan: pilih yang nyata tapi sudah ada langkah perbaikannya. Jawaban yang self-aware selalu lebih kuat dari jawaban yang terlalu sempurna.
-
-**"Mengapa kamu tertarik bekerja di sini?"**
-→ Riset perusahaan minimal 30 menit sebelum wawancara. Hubungkan nilai atau produk perusahaan dengan pengalaman spesifik kamu${companyDesc ? ` di ${companyDesc}` : ""}. Hindari "karena perusahaan ini bagus dan saya ingin belajar" — itu tidak membedakan kamu dari 50 kandidat lainnya.
-
-**"Di mana kamu melihat diri kamu 5 tahun ke depan?"**
-→ Tunjukkan ambisi yang realistis dan sejalan dengan industri ${industry}. Tidak perlu menyebut posisi spesifik di perusahaan ini — fokus pada dampak yang ingin kamu capai. Akhiri dengan menghubungkan kembali ke peran yang sedang dilamar: "...dan peran ini adalah langkah pertama yang paling tepat menuju tujuan itu."
-
-**"Ceritakan situasi di mana kamu menghadapi konflik dalam tim dan bagaimana kamu mengatasinya."**
-→ Gunakan framework STAR: Situation (konteks singkat), Task (peran kamu), Action (apa yang kamu lakukan spesifik), Result (hasil konkret). ${companyDesc ? `Kamu punya material nyata dari pengalaman di ${companyDesc} — pilih cerita yang menunjukkan kedewasaan dan kemampuan problem-solving.` : "Pilih cerita yang menunjukkan kedewasaan dan kemampuan problem-solving, bukan yang membuat semua pihak terlihat buruk."}
-
-**"Apa pencapaian terbesar kamu?"**
-→ Pilih pencapaian paling relevan dengan posisi yang dilamar${hasMetrics ? " — kamu sudah punya beberapa angka terukur di CV, gunakan itu sebagai anchor ceritamu." : " — tambahkan konteks: tantangannya apa, prosesnya bagaimana, dan dampaknya apa meski belum ada angka pasti."}
-
-**"Apakah ada pertanyaan untuk kami?"**
-→ SELALU siapkan 2–3 pertanyaan cerdas. Ini menunjukkan antusiasme dan persiapan. Contoh yang relevan: "Seperti apa profil orang yang paling sukses di posisi ini dalam 6 bulan pertama?" atau "Apa tantangan terbesar yang dihadapi tim ${industry.split(" ")[0]} saat ini?" Hindari bertanya gaji atau benefit di tahap pertama wawancara.
+- [ ] Review performa konten mingguan: post mana yang paling banyak impressions dan komentar?
+- [ ] Identifikasi pola: topik, format, dan waktu yang paling perform
+- [ ] Double down pada yang berhasil — hentikan yang tidak menghasilkan setelah 4× percobaan
+- [ ] Lamar 3–5 posisi per minggu menggunakan CV yang sudah diperbarui
+- [ ] Track semua lamaran di spreadsheet${skills.includes("Excel") || skills.includes("Google Sheets") ? ` (gunakan ${skills.includes("Excel") ? "Excel" : "Google Sheets"})` : ""}: perusahaan, posisi, tanggal, status, kontak
+- [ ] Update CV setiap 2 minggu berdasarkan feedback proses lamaran
+- [ ] Target bulan 3: follower +100, engagement rate >3%, respons lamaran >15%
 
 ---
 
-${firstName}, laporan ini adalah peta yang spesifik untuk kondisi CV dan personal brand kamu — bukan template generik. Mulai dari satu hal hari ini: pilih satu bullet point di CV kamu yang menggunakan kata "bertanggung jawab" atau "membantu", dan rewrite sekarang menggunakan rumus dampak. Besok, perbarui headline LinkedIn. Lusa, post konten pertama.
+# SKOR AKHIR
 
-Momentum personal brand dibangun dari aksi kecil yang konsisten, bukan dari rencana besar yang tidak pernah dimulai. Kamu sudah punya peta-nya — sekarang saatnya jalan.`;
+| Komponen | Skor | Maks | Catatan |
+|----------|------|------|---------|
+| Fondasi Profil LinkedIn | ${liScore} | 20 | ${hasLinkedin ? (linkedInProfile ? "URL ada & data terdeteksi — perlu optimasi headline, About, dan Skills" : "URL ada, profil perlu diaudit manual menggunakan checklist") : "Tidak ada URL LinkedIn — prioritas tertinggi"} |
+| CV & Impact | ${cvScore} | 20 | ${hasMetrics ? `${metricsCount} metrik terdeteksi — fondasi ada, tingkatkan ke min 1 angka/pengalaman` : "Hampir tidak ada angka terukur — setiap pengalaman butuh min 1 data point"} |
+| Niche & Positioning | ${nicheScore} | 15 | ${industry !== "Profesional" ? `Arah ${industry} terlihat, positioning spesifik belum tajam` : "Positioning belum terdefinisi — terlalu general"} |
+| Content Pillar | ${contentScore} | 10 | Pillar belum terdefinisi — mulai dari 4 pillar yang sudah disiapkan di 3.3 |
+| Kualitas Konten | ${qualScore} | 20 | ${skills.length >= 5 ? `${skills.length} skill terdeteksi — bahan konten kuat, format komunikasi perlu dioptimalkan` : skills.length >= 2 ? `${skills.length} skill terdeteksi — perlu dikembangkan lebih jauh` : "Bagian skills perlu diperkuat"} |
+| Strategi Metrik | ${metricScore} | 15 | Belum ada sistem tracking aktif — mulai dari 5 metrik di Level 5 |
+| **TOTAL** | **${totalScore}** | **100** | **${totalScore >= 70 ? "Fondasi kuat — fokus pada konsistensi eksekusi" : totalScore >= 50 ? "Fondasi ada — upgrade signifikan pada komunikasi dampak diperlukan" : `Titik awal jelas — ${100 - totalScore} poin bisa diraih dalam 90 hari`}** |
+
+Skor ${totalScore}/100 adalah titik awal yang jujur, bukan penilaian final. Ada **${100 - totalScore} poin** yang bisa diraih dalam 90 hari dengan eksekusi yang konsisten. Profesional di level ${levelLabel[careerLevel]} yang mengikuti rencana ini biasanya melihat:
+- Peningkatan 25–35 poin skor dalam satu kuartal
+- Respons lamaran meningkat 2–3× setelah CV diperbarui
+- Connection masuk dari rekruter mulai muncul setelah 4–6 minggu posting konsisten
+
+---
+
+# PENUTUP DARI DONATALKS
+
+${firstName}, laporan ini adalah peta yang spesifik untuk kondisi CV dan personal brand kamu — bukan template generik.
+
+Satu hal yang perlu diingat: **dokumen ini tidak bekerja jika hanya dibaca**.
+
+Mulai dari satu hal hari ini. Pilih satu bullet point di CV kamu — cari yang dimulai dengan "bertanggung jawab" atau "membantu" — dan rewrite sekarang menggunakan rumus di bagian 4D.
+
+Besok, perbarui headline LinkedIn menggunakan salah satu opsi dari 4B.
+
+Lusa, publish konten pertama menggunakan template dari 4E.
+
+Momentum personal brand dibangun dari aksi kecil yang konsisten, bukan dari rencana besar yang tidak pernah dimulai.
+
+Kamu sudah punya petanya — sekarang saatnya jalan.
+
+— Tim DonaTalks`;
 }
+
 
 // ── API Handler ───────────────────────────────────────────────────────────────
 
@@ -914,21 +1261,14 @@ export async function POST(request: NextRequest) {
 
     const fullContent = generateAnalysis(name, cv_text, linkedin_url || null, linkedInProfile);
 
-    const sections = fullContent.split(/^# /m);
-    let previewContent = "";
-    for (const section of sections) {
-      if (
-        section.startsWith("RINGKASAN EKSEKUTIF") ||
-        section.startsWith("KONTEKS KLIEN") ||
-        section.startsWith("YANG SUDAH KUAT") ||
-        section.startsWith("TEMUAN & REKOMENDASI")
-      ) {
-        previewContent += "# " + section + "\n";
-      }
-    }
-    if (!previewContent) {
-      previewContent = fullContent.substring(0, 1500) + "\n\n*...*";
-    }
+    // Preview = first ~50% of the document, cut at a clean section boundary
+    const midpoint = Math.floor(fullContent.length / 2);
+    let breakPoint = fullContent.indexOf("\n---\n", midpoint);
+    if (breakPoint === -1) breakPoint = fullContent.lastIndexOf("\n## ", midpoint + 2000);
+    if (breakPoint === -1) breakPoint = midpoint;
+    const previewContent =
+      fullContent.substring(0, breakPoint) +
+      "\n\n---\n\n> 🔒 **Lanjutan laporan tersedia setelah aktivasi** — termasuk: rewrite setiap poin CV (4D), 3 opsi headline LinkedIn (4B), draf About lengkap (4C), 15 hook konten (4F), kalender konten 4 minggu (4J), tabel Skor Akhir, dan Rencana Eksekusi lengkap.";
 
     const { error: insertError } = await supabaseServer.from("analyses").insert({
       id,
