@@ -17,7 +17,8 @@ function getSessionId(): string {
 export default function Home() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [linkedinHeadline, setLinkedinHeadline] = useState("");
+  const [linkedinAbout, setLinkedinAbout] = useState("");
   const [cvText, setCvText] = useState("");
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -71,7 +72,7 @@ export default function Home() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, cv_text: cvText, linkedin_url: linkedinUrl || null, session_id }),
+        body: JSON.stringify({ name, cv_text: cvText, linkedin_headline: linkedinHeadline.trim() || null, linkedin_about: linkedinAbout.trim() || null, session_id }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -249,26 +250,6 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* LinkedIn URL */}
-                <div>
-                  <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
-                    LinkedIn URL{" "}
-                    <span className="font-normal" style={{ color: "#8a9e99" }}>
-                      (opsional)
-                    </span>
-                  </label>
-                  <input
-                    type="url"
-                    value={linkedinUrl}
-                    onChange={(e) => setLinkedinUrl(e.target.value)}
-                    placeholder="https://linkedin.com/in/username"
-                    className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all"
-                    style={{ borderColor: "#d4c9b0", backgroundColor: "#fff", color: "#1E3832" }}
-                    onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
-                    onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
-                  />
-                </div>
-
                 {/* CV text fallback */}
                 {!fileName && (
                   <div>
@@ -292,6 +273,51 @@ export default function Home() {
                     />
                   </div>
                 )}
+
+                {/* LinkedIn Headline */}
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
+                    Headline LinkedIn{" "}
+                    <span className="font-normal" style={{ color: "#8a9e99" }}>
+                      (opsional — copy dari profil LinkedIn kamu)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={linkedinHeadline}
+                    onChange={(e) => setLinkedinHeadline(e.target.value)}
+                    placeholder='Contoh: "Finance Analyst | ESG & Sustainability | Open to Opportunities"'
+                    className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all"
+                    style={{ borderColor: "#d4c9b0", backgroundColor: "#fff", color: "#1E3832" }}
+                    onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
+                    onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
+                  />
+                </div>
+
+                {/* LinkedIn About */}
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
+                    Bagian About / Summary LinkedIn{" "}
+                    <span className="font-normal" style={{ color: "#8a9e99" }}>
+                      (opsional — copy-paste dari profilmu)
+                    </span>
+                  </label>
+                  <textarea
+                    value={linkedinAbout}
+                    onChange={(e) => setLinkedinAbout(e.target.value)}
+                    placeholder="Paste isi bagian About di profil LinkedIn kamu di sini..."
+                    rows={5}
+                    className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all resize-y"
+                    style={{
+                      borderColor: "#d4c9b0",
+                      backgroundColor: "#fff",
+                      color: "#1E3832",
+                      lineHeight: "1.7",
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
+                    onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
+                  />
+                </div>
 
                 {error && (
                   <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>
