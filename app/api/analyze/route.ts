@@ -948,7 +948,7 @@ Digunakan di cover letter, About LinkedIn, dan saat perkenalan networking:
 
 ---
 
-## 4B — Headline LinkedIn (3 Opsi)
+## 4B — Headline LinkedIn (${linkedinHeadline ? "4 Opsi termasuk Versi Perbaikan Headlinemu" : "3 Opsi"})
 
 **Opsi 1 — Fokus Keahlian:**
 > *"${skill1} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "Enthusiast" : "Professional"} | ${industry.split(" & ")[0]} | ${skill2 !== skill1 ? skill2 : skills[2] || "Problem Solver"} | ${university ? university.split(" ").slice(-1)[0] : "Passionate Learner"}"*
@@ -959,13 +959,72 @@ Digunakan di cover letter, About LinkedIn, dan saat perkenalan networking:
 **Opsi 3 — Fokus Journey:**
 > *"${careerLevel === "student" ? `Mahasiswa ${major || industry.split(" & ")[0]}` : careerLevel === "fresh_grad" ? `Fresh Graduate ${industry.split(" & ")[0]}` : `${industry.split(" & ")[0]} Professional`}${university ? ` @ ${university.split(" ").slice(-1)[0]}` : ""} | Building ${skill1 !== skill2 ? `${skill1} + ${skill2}` : skill1} for ${industry.split(" & ")[0]} | Let's connect"*
 
+${linkedinHeadline ? `**Opsi 4 — Versi Perbaikan dari Headline Kamu (KONKRET):**
+
+> **Headline aslimu:** *"${linkedinHeadline}"*
+
+${(() => {
+  const hl = linkedinHeadline;
+  const parts = hl.split(/[|·—]/).map((p: string) => p.trim()).filter((p: string) => p.length > 0);
+  const core = parts[0] || hl;
+  const sk1 = skills[0] || industry.split(" & ")[0];
+  const sk2 = skills[1] || skills[0] || industry.split(" & ").slice(-1)[0];
+  const hasSep = /[|·—]/.test(hl);
+  const hasKw = skills.some((s: string) => hl.toLowerCase().includes(s.toLowerCase()));
+  const cta = careerLevel === "student" || careerLevel === "fresh_grad" ? "Open to Opportunities" : "Open to New Challenges";
+  const improved = parts.length >= 2
+    ? `${core} | ${hasKw ? parts[1] || sk1 : sk1} | ${parts[2] || cta}`
+    : `${core} | ${sk1} | ${cta}`;
+  const changes: string[] = [];
+  if (!hasSep) changes.push("ditambahkan separator | untuk struktur yang lebih jelas");
+  if (!hasKw && skills.length > 0) changes.push(`ditambahkan keyword "${sk1}" dari CVmu untuk pencarian boolean`);
+  if (hl.length < 80) changes.push(`diperluas dari ${hl.length} ke ~${improved.length} karakter (masih jauh dari batas 220)`);
+  return `> **Versi diperbaiki:** *"${improved}"*
+
+> *Perubahan yang dibuat: ${changes.length > 0 ? changes.join("; ") : "struktur sudah cukup baik, penyesuaian minor pada keyword"}*`;
+})()}` : ""}
+
 *PROVISIONAL — sesuaikan dengan kondisi aktual profil LinkedIn kamu*
 
 ---
 
 ## 4C — Draf Bagian About / Summary LinkedIn
 
-*Gunakan draf ini sebagai basis, sesuaikan dengan detail konkret dari pengalamanmu.*
+${linkedinAbout ? `*Karena kamu sudah menyertakan about LinkedIn, bagian ini menampilkan SEBELUM vs SESUDAH secara konkret.*
+
+**SEBELUM (About aslimu — ${linkedinAbout.length} karakter):**
+
+> "${linkedinAbout.slice(0, 400)}${linkedinAbout.length > 400 ? "..." : ""}"
+
+**SESUDAH (Versi yang direkomendasikan):**
+
+Gunakan hasil rewrite di bagian LEVEL 1 di atas (buildAboutAnalysis) sebagai dasar. Struktur yang diperbaiki mengikuti formula WHO → WHAT → WHY → CTA:
+
+**[WHO — diperbaiki]**
+${(() => {
+  const co = companies[0] || null;
+  const ab = linkedinAbout;
+  const existingMetric = ab.match(/\d+\s*(?:%|bulan|tahun|orang|project|klien|year|month)/i);
+  const metricStr = existingMetric ? existingMetric[0] : null;
+  if (co && metricStr) return `${metricStr} di ${co} mengajarkan saya satu hal: [insight terkuatmu — 1 kalimat].`;
+  if (co) return `Ada satu pelajaran dari ${co} yang terus saya bawa ke setiap pekerjaan: [insight terkuatmu].`;
+  return `[Mulai dengan situasi nyata, pertanyaan yang memancing, atau pernyataan yang langsung menempatkan pembaca di tengah cerita — bukan dengan "Saya adalah"]`;
+})()}
+
+Saya ${firstName}${university ? `, ${university}` : ""}${gpa ? ` (IPK ${gpa})` : ""}. ${skills.length > 0 ? `Spesialisasi di ${skills.slice(0, 3).join(", ")}.` : `Bidang: ${industry}.`}
+
+**[WHAT — ambil dari aboutmu + tambah angka]**
+${companies[0] ? `Di ${companies[0]}, [ambil kalimat terkuat dari aboutmu tentang apa yang kamu kerjakan — tambahkan angka konkret jika belum ada].` : `[Ambil kalimat terkuat dari aboutmu tentang pengalaman dan kontribusi — tambahkan minimal 1 angka konkret].`}
+
+**[WHY — ${/percaya|believe|passionate|semangat|misi|visi|karena|because|driven by|peduli/i.test(linkedinAbout) ? "dipertahankan dari versimu" : "perlu ditambahkan"}]**
+${/percaya|believe|passionate|semangat|misi|visi|karena|because|driven by|peduli/i.test(linkedinAbout) ? "[Pertahankan kalimat filosofi/motivasi dari aboutmu yang asli — ini sudah ada dan jadi kekuatanmu]" : `Saya percaya bahwa ${industry.includes("Teknologi") ? "teknologi yang baik adalah yang menyelesaikan masalah nyata" : industry.includes("Marketing") ? "marketing yang baik dimulai dari memahami manusia, bukan algoritma" : industry.includes("Keuangan") ? "keuangan yang baik adalah tentang keputusan dengan data yang benar" : "[tuliskan filosofi kerjamu dalam 1 kalimat jujur]"}.`}
+
+**[CTA — ${/hubungi|dm\b|email|connect|terbuka|open to|reach out|let'?s talk/i.test(linkedinAbout) ? "diperbarui" : "ditambahkan"}]**
+Terbuka untuk [jenis peluang konkret] di ${industry}. DM atau email: [emailmu]
+
+---
+
+*Template alternatif dari nol (jika ingin mulai ulang):*` : `*Gunakan draf ini sebagai basis, sesuaikan dengan detail konkret dari pengalamanmu.*`}
 
 ---
 
