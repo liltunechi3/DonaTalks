@@ -1,168 +1,9 @@
 import { NextRequest } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { v4 as uuidv4 } from "uuid";
-import { ApifyClient } from "apify-client";
 
 export const maxDuration = 60;
 
-// ── LinkedIn Profile ──────────────────────────────────────────────────────────
-
-interface LinkedInExperience {
-  company: string | null;
-  title: string | null;
-  description: string | null;
-  starts_at: { year: number; month: number } | null;
-  ends_at: { year: number; month: number } | null;
-}
-
-interface LinkedInEducation {
-  school: string | null;
-  degree_name: string | null;
-  field_of_study: string | null;
-  starts_at: { year: number } | null;
-  ends_at: { year: number } | null;
-}
-
-interface LinkedInProfile {
-  full_name: string | null;
-  headline: string | null;
-  summary: string | null;
-  profile_pic_url: string | null;
-  background_cover_image_url: string | null;
-  connections: number | null;
-  follower_count: number | null;
-  experiences: LinkedInExperience[];
-  education: LinkedInEducation[];
-  skills: string[];
-  certifications: { name: string | null }[];
-  recommendations: unknown[];
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseApifyDate(d: any): { year: number; month: number } | null {
-  if (!d) return null;
-  // already an object like { year, month }
-  if (typeof d === "object" && d.year) return { year: Number(d.year), month: Number(d.month ?? 1) };
-  const s = String(d);
-  // "YYYY-MM" or "YYYY-MM-DD"
-  const iso = s.match(/^(\d{4})-(\d{2})/);
-  if (iso) return { year: parseInt(iso[1]), month: parseInt(iso[2]) };
-  // "YYYY" only
-  const yearOnly = s.match(/^(\d{4})$/);
-  if (yearOnly) return { year: parseInt(yearOnly[1]), month: 1 };
-  // "Month YYYY" e.g. "January 2020"
-  const months: Record<string, number> = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
-  const monthYear = s.match(/([a-zA-Z]{3,})\s+(\d{4})/);
-  if (monthYear) {
-    const m = months[monthYear[1].slice(0,3).toLowerCase()];
-    if (m) return { year: parseInt(monthYear[2]), month: m };
-  }
-  return null;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapApifyToProfile(item: any): LinkedInProfile {
-  const firstName = item.firstName ?? "";
-  const lastName = item.lastName ?? "";
-  const fullNameFallback = [firstName, lastName].filter(Boolean).join(" ") || null;
-
-  // experience can be nested under various keys
-  const rawExp: any[] = item.experience ?? item.experiences ?? item.positions ?? item.workExperience ?? item.jobs ?? [];
-  // education similar
-  const rawEdu: any[] = item.education ?? item.educations ?? [];
-  // skills: array of strings or objects
-  const rawSkills: any[] = item.skills ?? item.skillEndorsements ?? [];
-
-  return {
-    full_name: item.name ?? item.fullName ?? item.full_name ?? fullNameFallback,
-    headline: item.headline ?? item.title ?? item.currentPosition ?? null,
-    summary: item.summary ?? item.about ?? item.description ?? item.bio ?? null,
-    profile_pic_url: item.profilePicture ?? item.profilePicUrl ?? item.photo ?? item.avatar ?? item.image ?? null,
-    background_cover_image_url: item.backgroundImage ?? item.coverImage ?? item.backgroundCoverImageUrl ?? null,
-    connections: typeof item.connectionsCount === "number" ? item.connectionsCount
-      : typeof item.connections === "number" ? item.connections
-      : typeof item.connectionCount === "number" ? item.connectionCount
-      : null,
-    follower_count: typeof item.followersCount === "number" ? item.followersCount
-      : typeof item.followers === "number" ? item.followers
-      : typeof item.followerCount === "number" ? item.followerCount
-      : null,
-    experiences: rawExp.map((e: any) => ({
-      company: e.company ?? e.companyName ?? e.organization ?? e.employer ?? null,
-      title: e.title ?? e.position ?? e.role ?? e.jobTitle ?? null,
-      description: e.description ?? e.summary ?? e.details ?? null,
-      starts_at: parseApifyDate(e.startDate ?? e.start ?? e.from ?? e.startedAt ?? null),
-      ends_at: parseApifyDate(e.endDate ?? e.end ?? e.to ?? e.endedAt ?? null),
-    })),
-    education: rawEdu.map((e: any) => ({
-      school: e.school ?? e.schoolName ?? e.institution ?? e.university ?? null,
-      degree_name: e.degree ?? e.degreeName ?? e.degreeType ?? null,
-      field_of_study: e.fieldOfStudy ?? e.field ?? e.major ?? e.subject ?? null,
-      starts_at: parseApifyDate(e.startDate ?? e.start ?? null),
-      ends_at: parseApifyDate(e.endDate ?? e.end ?? null),
-    })),
-    skills: rawSkills
-      .map((s: any) => (typeof s === "string" ? s : s.name ?? s.skill ?? s.text ?? ""))
-      .filter((s: string) => s.length > 0),
-    certifications: (item.certifications ?? item.licenses ?? []).map((c: any) => ({
-      name: typeof c === "string" ? c : c.name ?? c.title ?? null,
-    })),
-    recommendations: item.recommendations ?? [],
-  };
-}
-
-async function fetchLinkedInProfile(linkedinUrl: string): Promise<LinkedInProfile | null> {
-  const apifyToken = process.env.APIFY_API_TOKEN;
-  const proxycurlKey = process.env.PROXYCURL_API_KEY;
-
-  // Try Apify — harvestapi/linkedin-profile-search
-  if (apifyToken) {
-    // Normalize URL: ensure no trailing query params that confuse the actor
-    let normalizedUrl = linkedinUrl.trim().replace(/\/+$/, "") + "/";
-
-    // Try two common input formats that different versions of the actor accept
-    const inputFormats = [
-      { profileUrls: [normalizedUrl] },
-      { startUrls: [{ url: normalizedUrl }] },
-      { urls: [normalizedUrl] },
-    ];
-
-    for (const actorInput of inputFormats) {
-      try {
-        const client = new ApifyClient({ token: apifyToken });
-        const run = await client.actor("harvestapi/linkedin-profile-search").call(
-          actorInput,
-          { waitSecs: 50, memory: 256 }
-        );
-        const { items } = await client.dataset(run.defaultDatasetId).listItems();
-        if (items.length > 0) {
-          console.log("[Apify] fetched with input:", JSON.stringify(actorInput));
-          console.log("[Apify] raw keys:", Object.keys(items[0]).join(", "));
-          return mapApifyToProfile(items[0]);
-        }
-        console.log("[Apify] empty result for input:", JSON.stringify(actorInput));
-      } catch (err) {
-        console.error("[Apify] error with input", JSON.stringify(actorInput), ":", err);
-      }
-    }
-  }
-
-  // Fallback: Proxycurl
-  if (proxycurlKey) {
-    try {
-      const res = await fetch(
-        `https://nubela.co/proxycurl/api/v2/linkedin?url=${encodeURIComponent(linkedinUrl)}&skills=include&extra=include`,
-        { headers: { Authorization: `Bearer ${proxycurlKey}` }, signal: AbortSignal.timeout(15000) }
-      );
-      if (res.ok) return (await res.json()) as LinkedInProfile;
-      console.error("[Proxycurl] error:", res.status, await res.text());
-    } catch (err) {
-      console.error("[Proxycurl] fetch error:", err);
-    }
-  }
-
-  return null; // No key = checklist mode
-}
 
 // ── CV Extraction Helpers ─────────────────────────────────────────────────────
 
@@ -445,7 +286,7 @@ function transformWeakBullet(bullet: string): string {
 
 // ── Main Analysis Generator ───────────────────────────────────────────────────
 
-function generateAnalysis(name: string, cvText: string, linkedinUrl: string | null, linkedInProfile: LinkedInProfile | null = null): string {
+function generateAnalysis(name: string, cvText: string, linkedinHeadline: string | null, linkedinAbout: string | null): string {
   const firstName = name.split(" ")[0];
 
   // Extract CV data
@@ -462,15 +303,17 @@ function generateAnalysis(name: string, cvText: string, linkedinUrl: string | nu
   const hasMetrics = metricsCount >= 2;
   const careerLevel = detectCareerLevel(cvText);
   const industry = detectIndustry(cvText);
-  const hasLinkedin = !!linkedinUrl;
+  const hasLinkedin = !!(linkedinHeadline || linkedinAbout);
 
   // CV / LinkedIn completeness
   const cvStatus = cvText.length > 3000 ? "LENGKAP" : cvText.length > 1000 ? "TERBATAS" : "BELUM ADA";
   const liStatus = !hasLinkedin
     ? "BELUM ADA"
-    : linkedInProfile
-    ? "TERBATAS (data otomatis)"
-    : "TERBATAS (URL ada, belum diverifikasi)";
+    : (linkedinHeadline && linkedinAbout)
+    ? "LENGKAP (headline + about)"
+    : linkedinHeadline
+    ? "TERBATAS (headline saja)"
+    : "TERBATAS (about saja)";
 
   const levelLabel: Record<CareerLevel, string> = {
     student: "Mahasiswa / Pelajar Aktif",
@@ -533,7 +376,7 @@ function generateAnalysis(name: string, cvText: string, linkedinUrl: string | nu
       : `Saya sudah baca CV kamu dari atas ke bawah. Ada hal penting yang perlu kita bahas.`;
 
   // Scores
-  const liScore = hasLinkedin ? (linkedInProfile ? 12 : 9) : 4;
+  const liScore = hasLinkedin ? (linkedinHeadline && linkedinAbout ? 12 : 9) : 4;
   const cvScore = hasMetrics ? (metricsCount >= 5 ? 14 : 10) : 6;
   const nicheScore = industry !== "Profesional" ? 8 : 5;
   const contentScore = 4;
@@ -546,217 +389,189 @@ function generateAnalysis(name: string, cvText: string, linkedinUrl: string | nu
   const skill2 = skills.length > 1 ? skills[1] : industry.split(" & ").slice(-1)[0];
   const exampleHeadline = `${skill1} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "| Fresh Graduate" : "Professional"} | ${skill2} | ${industry.split(" & ")[0]}`;
 
+
   // ── LinkedIn section (LEVEL 1) ────────────────────────────────────────────
+
+  // Headline analysis helper
+  function buildHeadlineAnalysis(): string {
+    if (!linkedinHeadline) return "";
+    const hl = linkedinHeadline;
+    const len = hl.length;
+    const hasSep = /[|·—]/.test(hl);
+    const hasKw = skills.some(s => hl.toLowerCase().includes(s.toLowerCase()));
+    const isTitleOnly = /^(Senior|Junior|Staff|Manajer|Manager|Lead|Head|Director|VP|Analyst|Engineer|Developer|Consultant|Supervisor|Akuntan|Guru|Dokter|Perawat|Designer)\s/i.test(hl) && !hasSep;
+    const hasLoc = /(Jakarta|Surabaya|Bandung|Bali|Yogyakarta|Semarang|Medan|Indonesia)/i.test(hl);
+
+    const issues: string[] = [];
+    if (len < 60) issues.push(`Terlalu pendek (${len}/220 karakter) — ${220 - len} karakter ruang terbuang`);
+    else if (len < 120) issues.push(`Sedang (${len}/220 karakter) — masih ada ${220 - len} karakter yang bisa dimanfaatkan`);
+    else issues.push(`Panjang OK (${len}/220 karakter)`);
+    if (!hasSep) issues.push(`Tidak ada separator (| atau ·) — susah dibaca sekilas di search result`);
+    if (isTitleOnly) issues.push(`Hanya jabatan tanpa value prop — tidak membedakan dari ribuan kandidat dengan jabatan yang sama`);
+    if (hasLoc) issues.push(`Lokasi membuang ruang — rekruter sudah bisa filter by location, tidak perlu di headline`);
+    if (!hasKw && skills.length > 0) issues.push(`Tidak ada keyword dari CV (${skills.slice(0, 3).join(", ")}) — mengurangi peluang muncul di pencarian boolean`);
+
+    const parts = hl.split(/[|·—]/).map(p => p.trim()).filter(Boolean);
+    const core = parts[0] || hl;
+    const sk1 = skills[0] || industry.split(" & ")[0];
+    const sk2 = skills[1] || skills[0] || industry.split(" & ").slice(-1)[0];
+
+    return `---
+
+**TEMUAN — Headline LinkedIn** (${len}/220 karakter):
+
+> *"${hl}"*
+
+**Diagnosis:**
+${issues.map(i => `- ${i.startsWith("Panjang OK") ? "✅" : "❌"} ${i}`).join("\n")}
+${hasKw ? `- ✅ Ada keyword dari CV` : ""}
+
+**ANALISA:** ${isTitleOnly ? `"${hl}" tidak membedakanmu dari ratusan kandidat lain dengan jabatan yang sama di ${industry}.` : !hasSep ? "Formula separator belum dipakai — headline butuh struktur agar mudah di-scan dalam 1 detik." : `Headline sudah pakai separator. Fokus pada penguatan nilai yang dikomunikasikan.`}
+
+**DAMPAK:** Profil dengan headline yang dioptimalkan mendapat 40% lebih banyak klik dari pencarian rekruter.
+
+**REKOMENDASI — Rewrite Konkret Headlinemu:**
+
+> **SEBELUM:** "${hl}"
+
+> **SESUDAH (Opsi 1 — fokus skill):** "${core} | ${sk1} | ${sk2} | Open to Opportunities"
+
+> **SESUDAH (Opsi 2 — fokus dampak):** "Membantu ${industry.split(" & ")[0]} teams [hasil konkret] | ${sk1} & ${sk2} | ${careerLevel === "student" || careerLevel === "fresh_grad" ? "Fresh Graduate" : "Open to New Challenges"}"
+
+> **SESUDAH (Opsi 3 — fokus keyword):** "${sk1} ${careerLevel === "student" || careerLevel === "fresh_grad" ? "Graduate" : "Professional"} | ${sk2}${university ? ` @ ${university.split(" ").slice(-1)[0]}` : ""} | ${industry.split(" & ")[0]} | Let's connect"
+
+Lihat juga opsi lengkap di bagian 4B.
+
+**PRIORITAS: 🔴 TINGGI**
+
+`;
+  }
+
+  // About / Summary analysis helper
+  function buildAboutAnalysis(): string {
+    if (!linkedinAbout) return "";
+    const ab = linkedinAbout;
+    const sentences = ab.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(s => s.length > 5);
+    const firstSentence = sentences[0] || ab.slice(0, 150);
+    const firstTwo = sentences.slice(0, 2).join(" ");
+
+    // Hook strength
+    const weakHook = /^(saya adalah|saya merupakan|hai[,\s]?saya|halo[,\s]?saya|perkenalkan|nama saya|i am a|i am an|my name is|i'm a|hello[,\s]?i)/i.test(ab.trim());
+    const medHook = !weakHook && /^(saya memiliki|saya punya|i have|dengan pengalaman|sebagai seorang|as a|dengan latar|selama \d)/i.test(ab.trim());
+    const hookLabel = weakHook ? "🔴 LEMAH" : medHook ? "🟡 SEDANG" : "🟢 KUAT";
+    const hookNote = weakHook
+      ? `"${firstSentence.slice(0, 70)}..." — pembuka ini termasuk 3 pola paling umum di LinkedIn. Rekruter scroll sebelum membaca.`
+      : medHook
+      ? `Cukup deskriptif tapi belum memancing rasa ingin tahu. Coba mulai dengan situasi, hasil, atau pertanyaan.`
+      : `Hook sudah menarik — pertahankan energinya dan pastikan sisanya sama kuatnya.`;
+
+    const hasNumbers = /\d+/.test(ab);
+    const hasCTA = /hubungi|dm\b|email|connect|terbuka|open to|reach out|let'?s talk|message me|diskusi/i.test(ab);
+    const hasWhy = /percaya|believe|passionate|semangat|misi|visi|karena|because|driven by|peduli|care about/i.test(ab);
+    const hasWho = /saya|i am|graduate|profesional|mahasiswa|spesiali|expert/i.test(ab);
+    const hasWhat = hasNumbers || /menghasilkan|memimpin|mengelola|led|built|created|designed|managed|developed/i.test(ab);
+    const wordCount = ab.split(/\s+/).length;
+
+    const lenNote = ab.length < 200
+      ? `🔴 Sangat pendek (${ab.length} kar) — About efektif minimal 500 karakter`
+      : ab.length < 500
+      ? `🟡 Sedang (${ab.length} kar) — bisa diperluas hingga 2.600 karakter`
+      : ab.length > 2600
+      ? `⚠️ Terlalu panjang (${ab.length} kar) — LinkedIn potong di 2.600`
+      : `✅ Panjang baik (${ab.length} kar, ~${wordCount} kata)`;
+
+    // Build concrete rewrite
+    const univShort = university ? university.split(" ").slice(-1)[0] : "";
+    const coShort = companies[0] || null;
+
+    const rewriteHook = weakHook && coShort
+      ? `"${coShort} mengajarkan saya satu hal yang tidak ada di buku teks: [insight terkuatmu].`
+      : weakHook
+      ? `"[Mulai dengan situasi, pertanyaan, atau pernyataan yang langsung menempatkan pembaca di tengah cerita — bukan dengan memperkenalkan dirimu.]`
+      : `"${firstSentence}`;
+
+    const rewriteWho = `Saya ${firstName}${univShort ? `, ${univShort}` : ""}${gpa && parseFloat(gpa) >= 3.0 ? ` (IPK ${gpa})` : ""} — ${careerLevel === "student" ? "mahasiswa" : careerLevel === "fresh_grad" ? "fresh graduate" : "profesional"} di bidang ${industry}.`;
+
+    const rewriteWhat = coShort
+      ? `Di ${coShort}, saya [ambil pencapaian paling konkret dari pengalaman di sana — dengan angka]. ${skills.length > 0 ? `Keahlian utama: ${skills.slice(0, 3).join(", ")}.` : ""}`
+      : `Sepanjang perjalanan di ${industry}, saya [ambil pencapaian paling konkret — dengan angka]. ${skills.length > 0 ? `Keahlian utama: ${skills.slice(0, 3).join(", ")}.` : ""}`;
+
+    const rewriteWhy = hasWhy
+      ? "// WHY sudah ada — pertahankan kalimat filosofi/motivasimu, perkuat jika perlu"
+      : "Saya percaya bahwa [satu kalimat filosofi kerja yang jujur dan spesifik — bukan klise].";
+
+    const rewriteCTA = hasCTA
+      ? "// CTA sudah ada — pastikan ada cara konkret untuk menghubungimu"
+      : "📩 Terbuka untuk [jenis peluang konkret]. DM atau email: [emailmu]";
+
+    return `---
+
+**TEMUAN — Bagian About LinkedIn** (${ab.length} karakter, ~${wordCount} kata):
+
+> Hook (kalimat pertama): *"${firstSentence.slice(0, 200)}${firstSentence.length > 200 ? "..." : ""}"*
+
+**Diagnosis Lengkap:**
+- Hook: **${hookLabel}** — ${hookNote}
+- Panjang: **${lenNote}**
+- WHO (siapa kamu): ${hasWho ? "✅ Ada" : "⚠️ Perlu diperjelas"}
+- WHAT (apa yang dicapai/dilakukan): ${hasWhat ? (hasNumbers ? "✅ Ada + ada metrik" : "⚠️ Ada tapi tanpa angka") : "❌ Tidak jelas"}
+- WHY (filosofi/motivasi): ${hasWhy ? "✅ Ada — ini yang membedakanmu" : "❌ Tidak ada — elemen paling sering hilang, paling sering membuat orang connect"}
+- CTA (ajakan dihubungi): ${hasCTA ? "✅ Ada" : "❌ Tidak ada — rekruter yang tertarik tidak tahu harus berbuat apa"}
+
+**ANALISA:** ${weakHook ? `Kalimat pembuka "${firstSentence.slice(0, 60)}..." adalah salah satu pola paling umum di LinkedIn. Rekruter membaca ratusan About yang dimulai dengan "Saya adalah" — tidak ada yang memorable, tidak ada yang berhenti scroll.` : !hasWhy && !hasCTA ? "About kamu sudah punya struktur dasar, tapi kehilangan dua elemen yang paling membedakan: WHY (kenapa kamu melakukan ini) dan CTA (apa yang harus dilakukan pembaca)." : "About kamu sudah ada beberapa elemen penting. Fokus pada penguatan area yang masih lemah."}
+
+**DAMPAK:** ${!hasCTA ? "Rekruter yang tertarik menutup tab karena tidak tahu cara menghubungimu. " : ""}${!hasNumbers ? "Tanpa angka, pencapaian kamu tidak bisa dibedakan dari klaim siapapun. " : ""}${!hasWhy ? "Tanpa WHY, about kamu terdengar seperti daftar skill — bukan undangan untuk terhubung." : ""}
+
+**REKOMENDASI — Rewrite Konkret (copy, adaptasi, gunakan):**
+
+> **SEBELUM (about kamu sekarang):**
+> *"${ab.slice(0, 300)}${ab.length > 300 ? "..." : ""}"*
+
+> **SESUDAH (versi yang direkomendasikan):**
+>
+> ${rewriteHook}
+>
+> ${rewriteWho}
+>
+> ${rewriteWhat}
+>
+> ${rewriteWhy}
+>
+> ${rewriteCTA}"
+
+*Gunakan draf penuh WHO→WHAT→WHY→CTA di bagian 4C. Versi alternatif (jalur karir) di 4I.*
+
+**PRIORITAS: 🔴 SANGAT TINGGI**
+
+`;
+  }
+
   let linkedInSection: string;
   if (!hasLinkedin) {
     linkedInSection = `### Audit LinkedIn ${firstName} — Status: BELUM ADA
 
-**TEMUAN:** Tidak ada URL LinkedIn yang disertakan dalam CV ${firstName}.
+**TEMUAN:** Tidak ada data LinkedIn yang diberikan (headline maupun About).
 
-**ANALISA:** LinkedIn adalah mesin pencari personal brand nomor satu. Rekruter aktif menggunakan boolean search untuk menemukan kandidat secara proaktif — artinya mereka datang ke kamu, bukan menunggu lamaranmu. Tanpa profil publik yang teroptimasi, kamu tidak ada di radar mereka.
+**ANALISA:** LinkedIn adalah mesin pencari personal brand nomor satu. Rekruter aktif mencari kandidat menggunakan boolean search — tanpa profil teroptimasi, kamu tidak ada di radar mereka.
 
-**DAMPAK:** Kandidat tanpa LinkedIn kehilangan 70%+ peluang dari rekruter yang mencari secara aktif. Ketika rekruter mencari namamu di Google, tidak ada aset digital yang mendukung narasi CV.
+**DAMPAK:** Kandidat tanpa LinkedIn kehilangan 70%+ peluang dari rekruter yang mencari secara aktif.
 
-**REKOMENDASI:** Buat profil LinkedIn hari ini. Nama lengkap persis seperti di CV. Dalam 48 jam pertama selesaikan: foto profil, headline, About (pakai draf di 4C), pengalaman dari CV, dan Skills.
-
-Headline langsung yang bisa dipakai: *"${exampleHeadline}"*
-
-**PRIORITAS: 🔴 SANGAT TINGGI**
-
----
-
-**TEMUAN:** Lima area LinkedIn wajib dioptimalkan segera.
-
-**ANALISA:** Profil LinkedIn yang kosong atau setengah jadi memberi kesan negatif. Rekruter yang mengklik akan langsung menutup tab jika tidak menemukan isi yang menarik.
-
-**DAMPAK:** Profil kosong = kesan ketidakprofesionalan yang tidak bisa diperbaiki di tahap selanjutnya.
-
-**REKOMENDASI:** Urutan pengerjaan:
+**REKOMENDASI:** Buat atau optimalkan profil LinkedIn, lalu:
 1. **Foto profil** — latar bersih, ekspresi natural, pakaian sesuai industri ${industry}
-2. **Headline** — gunakan opsi di bagian 4B
-3. **Banner** — buat di Canva, 1584×396px, cantumkan tagline dan ${skills.length > 0 ? skills.slice(0, 2).join("/") : "keahlian utama"}
-4. **About** — gunakan draf di bagian 4C
+2. **Headline** — formula [Keahlian] | [Nilai] | [Target]. Contoh: *"${exampleHeadline}"*
+3. **Banner** — Canva 1584×396px dengan tagline dan ${skills.length > 0 ? skills.slice(0, 2).join("/") : "keahlian utama"}
+4. **About** — gunakan draf di bagian 4C (struktur WHO→WHAT→WHY→CTA)
 5. **Skills** — minimal 10 skill, minta endorsement dari 3+ koneksi
 
-**PRIORITAS: 🔴 SANGAT TINGGI**`;
-  } else if (linkedInProfile) {
-    const liHeadline = linkedInProfile.headline || "(kosong)";
-    const headlineNote = !linkedInProfile.headline
-      ? "Headline **kosong** — ini yang pertama dilihat rekruter di search result LinkedIn."
-      : linkedInProfile.headline.length < 60
-      ? `Hanya ${linkedInProfile.headline.length} karakter — jauh dari 220 karakter yang tersedia.`
-      : "Perlu dicek apakah mengkomunikasikan nilai nyata, bukan sekadar jabatan.";
-    const aboutStatus = linkedInProfile.summary
-      ? `sudah diisi: *"${linkedInProfile.summary.slice(0, 200)}${linkedInProfile.summary.length > 200 ? "..." : ""}"* — perlu dicek kekuatan hook di kalimat pertama`
-      : "**KOSONG** — ini real estate terbaik yang belum dimanfaatkan";
-    const photoStatus = linkedInProfile.profile_pic_url ? "terdeteksi ✓" : "tidak terdeteksi — perlu dicek";
-    const bannerStatus = linkedInProfile.background_cover_image_url
-      ? "terdeteksi ✓ — pastikan on-brand"
-      : "tidak terdeteksi — kemungkinan masih default biru LinkedIn";
-
-    linkedInSection = `### Audit LinkedIn ${firstName} — Data Profil Terdeteksi
-
-**TEMUAN:** Headline LinkedIn saat ini: *"${liHeadline}"*. ${headlineNote}
-
-**ANALISA:** Headline muncul di search result LinkedIn dan notifikasi koneksi. Formula efektif: [Keahlian Utama] | [Nilai yang Kamu Bawa] | [Target Industri/Posisi].
-
-**DAMPAK:** Headline yang dioptimalkan menghasilkan 40% lebih banyak klik profil dari pencarian rekruter.
-
-**REKOMENDASI:** Ganti${linkedInProfile.headline ? ` dari "${linkedInProfile.headline}"` : ""} ke salah satu opsi di bagian 4B. Opsi cepat: *"${exampleHeadline}"*
-
-**PRIORITAS: 🔴 TINGGI**
-
----
-
-**TEMUAN:** Bagian About: ${aboutStatus}
-
-**ANALISA:** Bagian About adalah 2.600 karakter real estate terbaik di LinkedIn. Kalimat pembuka menentukan apakah rekruter klik "lihat selengkapnya" atau scroll.
-
-**DAMPAK:** About yang kosong atau hook yang lemah membuat ${firstName} tidak terbedakan dari ratusan kandidat lain.
-
-**REKOMENDASI:** Gunakan draf di bagian 4C. Struktur: WHO → WHAT → WHY → CTA.
-
-**PRIORITAS: 🔴 TINGGI**
-
----
-
-**TEMUAN:** Foto profil: ${photoStatus}. Banner: ${bannerStatus}.
-
-**ANALISA:** Profil dengan foto profesional mendapat 21× lebih banyak dilihat. Banner adalah iklan gratis 1584×396px yang mayoritas pengguna biarkan default.
-
-**DAMPAK:** Kesan pertama terjadi secara visual dalam <1 detik — sebelum rekruter membaca satu kata dari headline.
-
-**REKOMENDASI:** Foto: latar bersih, pakaian sesuai ${industry}, ekspresi natural, min 400×400px. Banner: Canva 1584×396px dengan tagline dan ${skills.length > 0 ? skills.slice(0, 2).join("/") : "keahlian utama"}.
-
-**PRIORITAS: 🟡 SEDANG**
-
----
-
-**TEMUAN:** Skills LinkedIn: ${linkedInProfile.skills && linkedInProfile.skills.length > 0 ? `terdeteksi ${linkedInProfile.skills.length} skill — ${linkedInProfile.skills.slice(0, 6).join(", ")}` : "belum terdeteksi atau kosong"}.
-
-**ANALISA:** Skills section adalah keyword yang dibaca rekruter saat boolean search. Tanpa ini, profil tidak muncul di pencarian spesifik.
-
-**DAMPAK:** Skills kosong = tidak terindeks untuk pencarian spesifik = kehilangan peluang yang tidak pernah disadari.
-
-**REKOMENDASI:** ${linkedInProfile.skills && linkedInProfile.skills.length > 0 ? `Sinkronkan dengan CV: ${skills.length > 0 ? skills.slice(0, 5).join(", ") : "tool teknis utama"}. Tambahkan yang belum ada.` : `Tambahkan minimal 10 skill: ${skills.length > 0 ? skills.slice(0, 6).join(", ") : "tool teknis yang dikuasai"}. Minta endorsement dari 3+ koneksi.`}
-
-**PRIORITAS: 🟡 SEDANG**
-
----
-
-${(() => {
-  // Deep audit of LinkedIn experiences
-  if (!linkedInProfile.experiences || linkedInProfile.experiences.length === 0) {
-    return `**TEMUAN:** Bagian Pengalaman di LinkedIn tidak terdeteksi atau kosong.\n\n**ANALISA:** Bagian Pengalaman adalah konten paling sering dibuka rekruter setelah headline. Tanpa ini, profil terlihat seperti akun baru yang tidak credible.\n\n**REKOMENDASI:** Salin minimal 3 posisi dari CV ke LinkedIn. Gunakan format dampak dari bagian 4D — bukan sekadar copy-paste CV lama.\n\n**PRIORITAS: 🔴 SANGAT TINGGI**`;
-  }
-
-  const expAuditRows = linkedInProfile.experiences.map((exp, i) => {
-    const role = exp.title || "(jabatan tidak diisi)";
-    const company = exp.company || "(perusahaan tidak diisi)";
-    const desc = exp.description || "";
-    const hasDesc = desc.length > 0;
-    const hasNumbers = /\d/.test(desc);
-    const isPassive = /\b(bertanggung jawab|bertanggungjawab|membantu|melakukan|melaksanakan|responsible for|assist|participated)\b/i.test(desc);
-    const isShort = hasDesc && desc.length < 80;
-    const period = (() => {
-      const sy = exp.starts_at?.year;
-      const ey = exp.ends_at?.year;
-      if (!sy) return "-";
-      return ey ? `${sy}–${ey}` : `${sy}–sekarang`;
-    })();
-    const status = !hasDesc ? "❌ Kosong" : isShort ? "⚠️ Terlalu singkat" : isPassive ? "⚠️ Pasif" : !hasNumbers ? "⚠️ Tanpa angka" : "✅ OK";
-    return `| ${i + 1} | ${role} @ ${company} | ${period} | ${status} | ${!hasDesc ? "Tambahkan deskripsi segera" : isPassive ? "Ganti kata kerja pasif" : !hasNumbers ? "Tambahkan minimal 1 angka" : "Pertahankan, cek keyword ATS"} |`;
-  }).join("\n");
-
-  const expRewrites = linkedInProfile.experiences.slice(0, 5).map((exp, i) => {
-    const role = exp.title || "Jabatan";
-    const company = exp.company || "Perusahaan";
-    const desc = exp.description || "";
-    const after = desc.length > 0
-      ? transformWeakBullet(desc.split(/[.\n]/)[0].trim() || desc.slice(0, 120))
-      : `Mengeksekusi tanggung jawab sebagai ${role} di ${company} — [tambahkan: hasil terukur, jumlah orang terdampak, % peningkatan, atau budget yang dikelola]`;
-    return `**Pengalaman ${i + 1}: ${role} @ ${company}**\n\n> **SEBELUM (LinkedIn saat ini):** "${desc.slice(0, 200) || "(deskripsi kosong)"}${desc.length > 200 ? "..." : ""}"\n\n> **SESUDAH:** "${after}"\n`;
-  }).join("\n---\n\n");
-
-  const totalExp = linkedInProfile.experiences.length;
-  const emptyDesc = linkedInProfile.experiences.filter(e => !e.description || e.description.length === 0).length;
-  const passiveDesc = linkedInProfile.experiences.filter(e => e.description && /\b(bertanggung jawab|membantu|melakukan|responsible for|assist)\b/i.test(e.description)).length;
-  const noNumbers = linkedInProfile.experiences.filter(e => e.description && !/\d/.test(e.description)).length;
-
-  return `**TEMUAN:** ${totalExp} pengalaman kerja terdeteksi di LinkedIn ${firstName}. Ringkasan kualitas deskripsi:
-
-| # | Posisi | Periode | Status | Tindakan |
-|---|--------|---------|--------|----------|
-${expAuditRows}
-
-**Ringkasan masalah:**
-- ${emptyDesc} dari ${totalExp} pengalaman **tidak ada deskripsi sama sekali**
-- ${passiveDesc} dari ${totalExp} pengalaman **menggunakan kalimat pasif**
-- ${noNumbers} dari ${totalExp} pengalaman **tidak ada angka/metrik**
-
-**ANALISA:** Rekruter yang mengklik profil LinkedIn ${firstName} dan membuka tab Pengalaman akan melihat ${emptyDesc > 0 ? `${emptyDesc} posisi tanpa deskripsi apapun — ini mengirim sinyal bahwa kandidat tidak serius mengoptimalkan profil.` : "deskripsi yang perlu ditingkatkan dari sisi dampak dan metrik."}
-
-**DAMPAK:** Deskripsi pengalaman di LinkedIn bukan sekadar duplikasi CV — ini adalah narasi yang bisa lebih panjang, lebih personal, dan dioptimalkan untuk keyword pencarian rekruter.
-
-**REKOMENDASI — Rewrite Setiap Deskripsi Pengalaman LinkedIn:**
-
-${expRewrites}
+Setelah selesai, kembali ke DonaTalks dan paste teks Headline + About kamu untuk audit lebih mendalam.
 
 **PRIORITAS: 🔴 SANGAT TINGGI**`;
-})()}
-
-${(() => {
-  if (!linkedInProfile.connections && !linkedInProfile.follower_count) return "";
-  const conn = linkedInProfile.connections ?? 0;
-  const foll = linkedInProfile.follower_count ?? 0;
-  const connLabel = conn >= 500 ? "500+" : conn >= 100 ? "100–499" : conn > 0 ? `${conn}` : "tidak terdeteksi";
-  const connAdvice = conn >= 500
-    ? "Network sudah solid. Fokus pada kualitas konten untuk mengkonversi koneksi menjadi peluang aktif."
-    : conn >= 100
-    ? "Network sedang berkembang. Target tambah 50 koneksi relevan per bulan dari rekruter dan senior di industri."
-    : "Network masih sangat terbatas. Kirim 10 connection request per hari ke rekruter, alumni, dan profesional di industri yang sama.";
-  return `---
-
-**TEMUAN:** Koneksi LinkedIn: **${connLabel}**${foll > 0 ? `. Follower: **${foll}**` : ""}.
-
-**ANALISA:** Koneksi 500+ memberi sinyal kredibilitas sosial yang dibaca rekruter secara tidak sadar. Follower count yang tinggi menunjukkan konten punya distribusi organik.
-
-**REKOMENDASI:** ${connAdvice}
-
-**PRIORITAS: 🟡 SEDANG**`;
-})()}`;
   } else {
-    linkedInSection = `### Audit LinkedIn ${firstName} — URL Ada, Data Perlu Verifikasi Manual
+    linkedInSection = `### Audit LinkedIn ${firstName} — Berdasarkan Teks Profil
 
-**TEMUAN:** URL LinkedIn disertakan (${linkedinUrl}). Data profil tidak bisa diakses otomatis — audit berdasarkan checklist standar.
-
-**ANALISA:** Lima area menentukan apakah rekruter mau mengklik profil: headline, foto, banner, About, dan Skills.
-
-**DAMPAK:** Profil yang tidak dioptimalkan sama buruknya dengan tidak punya profil.
-
-**REKOMENDASI:** Buka profil LinkedIn sekarang dan cek satu per satu:
-1. ✅/❌ **Headline** — pakai formula [Keahlian] | [Nilai] | [Industri]? Contoh: *"${exampleHeadline}"*
-2. ✅/❌ **About** — ada hook kuat di 2 kalimat pertama?
-3. ✅/❌ **Foto** — profesional, latar bersih?
-4. ✅/❌ **Banner** — bukan default biru LinkedIn?
-5. ✅/❌ **Skills** — minimal 10 skill relevan terdaftar?
-
-Gunakan draf di bagian 4B dan 4C sebagai baseline.
-
-**PRIORITAS: 🔴 TINGGI**
-
----
-
-**TEMUAN:** Sinkronisasi CV ↔ LinkedIn perlu diverifikasi manual.
-
-**ANALISA:** Rekruter sering membuka CV dan LinkedIn bersamaan. Inkonsistensi — jabatan berbeda, periode kerja berbeda, skill tidak selaras — menciptakan keraguan tentang kredibilitas.
-
-**DAMPAK:** Inkonsistensi kecil sekalipun bisa menjadi alasan penolakan yang tidak pernah dikomunikasikan.
-
-**REKOMENDASI:** Buka CV dan LinkedIn side by side. Pastikan: nama perusahaan identik, periode kerja sama, deskripsi konsisten, skills selaras. ${skills.length > 0 ? `Tambahkan ${skills.slice(0, 4).join(", ")} ke LinkedIn Skills jika belum.` : ""}
-
-**PRIORITAS: 🟡 SEDANG**`;
+${buildHeadlineAnalysis()}${buildAboutAnalysis()}${!linkedinHeadline ? `**Catatan:** Headline tidak diberikan — tambahkan headline LinkedIn di form untuk audit yang lebih mendalam.\n\n` : ""}${!linkedinAbout ? `**Catatan:** Bagian About tidak diberikan — tambahkan About LinkedIn di form untuk audit yang lebih mendalam.\n\n` : ""}`;
   }
+
 
   // ── LEVEL 2: CV bullet rewrites ─────────────────────────────────────────
   const bulletsToRewrite = allBullets.slice(0, 20);
@@ -854,7 +669,7 @@ Cara optimal menggunakan dokumen ini: baca sekali dari awal sampai akhir, lalu k
 | Input | Status | Catatan |
 |-------|--------|---------|
 | CV | **${cvStatus}** | ${cvText.length > 3000 ? `${Math.round(cvText.length / 100) * 100} karakter terdeteksi — data cukup untuk analisa mendalam` : cvText.length > 1000 ? "CV ada tapi belum lengkap — beberapa seksi mungkin perlu ditambah" : "CV sangat singkat — analisa terbatas, rekomendasi bersifat umum"} |
-| LinkedIn | **${liStatus}** | ${!hasLinkedin ? "Tidak ada URL LinkedIn — prioritas untuk dibuat segera" : linkedInProfile ? "Profil terdeteksi — headline, About, dan skills berhasil diambil" : "URL ada tapi profil tidak bisa diakses otomatis — rekomendasi berdasarkan checklist"} |
+| LinkedIn | **${liStatus}** | ${!hasLinkedin ? "Tidak ada data LinkedIn — prioritas untuk diisi segera" : (linkedinHeadline && linkedinAbout) ? "Headline + About diberikan — audit mendalam tersedia" : linkedinHeadline ? "Headline diberikan, About belum diisi" : "About diberikan, Headline belum diisi"} |
 
 **Konteks Klien:**
 
@@ -1345,7 +1160,7 @@ ${week1Tasks.map((t) => `- [ ] ${t}`).join("\n")}
 
 | Komponen | Skor | Maks | Catatan |
 |----------|------|------|---------|
-| Fondasi Profil LinkedIn | ${liScore} | 20 | ${hasLinkedin ? (linkedInProfile ? "URL ada & data terdeteksi — perlu optimasi headline, About, dan Skills" : "URL ada, profil perlu diaudit manual menggunakan checklist") : "Tidak ada URL LinkedIn — prioritas tertinggi"} |
+| Fondasi Profil LinkedIn | ${liScore} | 20 | ${hasLinkedin ? ((linkedinHeadline && linkedinAbout) ? "Headline + About diaudit — lihat rekomendasi di LEVEL 1" : "Data LinkedIn parsial — isi headline + About untuk audit penuh") : "Tidak ada data LinkedIn — prioritas tertinggi"} |
 | CV & Impact | ${cvScore} | 20 | ${hasMetrics ? `${metricsCount} metrik terdeteksi — fondasi ada, tingkatkan ke min 1 angka/pengalaman` : "Hampir tidak ada angka terukur — setiap pengalaman butuh min 1 data point"} |
 | Niche & Positioning | ${nicheScore} | 15 | ${industry !== "Profesional" ? `Arah ${industry} terlihat, positioning spesifik belum tajam` : "Positioning belum terdefinisi — terlalu general"} |
 | Content Pillar | ${contentScore} | 10 | Pillar belum terdefinisi — mulai dari 4 pillar yang sudah disiapkan di 3.3 |
@@ -1385,7 +1200,7 @@ Kamu sudah punya petanya — sekarang saatnya jalan.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, cv_text, linkedin_url, session_id } = body;
+    const { name, cv_text, linkedin_headline, linkedin_about, session_id } = body;
 
     if (!name || !cv_text) {
       return Response.json({ error: "Nama dan CV wajib diisi" }, { status: 400 });
@@ -1393,14 +1208,7 @@ export async function POST(request: NextRequest) {
 
     const id = uuidv4();
 
-    // Fetch LinkedIn profile if URL provided (Proxycurl full data or OG meta fallback)
-    let linkedInProfile: LinkedInProfile | null = null;
-    if (linkedin_url) {
-      linkedInProfile = await fetchLinkedInProfile(linkedin_url);
-      if (linkedInProfile) console.log("LinkedIn fetched:", linkedInProfile.headline ?? "no headline");
-    }
-
-    const fullContent = generateAnalysis(name, cv_text, linkedin_url || null, linkedInProfile);
+    const fullContent = generateAnalysis(name, cv_text, linkedin_headline?.trim() || null, linkedin_about?.trim() || null);
 
     // Preview = first ~50% of the document, cut at a clean section boundary
     const midpoint = Math.floor(fullContent.length / 2);
@@ -1414,7 +1222,6 @@ export async function POST(request: NextRequest) {
     const { error: insertError } = await supabaseServer.from("analyses").insert({
       id,
       cv_text,
-      linkedin_url: linkedin_url || null,
       session_id: session_id || uuidv4(),
       is_paid: false,
       preview_content: previewContent.trim(),
