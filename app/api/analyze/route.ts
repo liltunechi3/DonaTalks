@@ -109,12 +109,19 @@ function extractSkills(text: string): string[] {
     "SPSS", "Tableau", "Power BI", "Looker", "Data Studio", "Google Analytics",
     "AutoCAD", "MATLAB", "R Studio",
     "SAP", "Salesforce", "HubSpot", "Odoo",
-    "SEO", "SEM", "Google Ads", "Meta Ads", "TikTok Ads",
+    "SEO", "SEM", "Google Ads", "Meta Ads", "TikTok Ads", "Facebook Ads", "Google Search Ads",
     "WordPress", "Webflow", "Shopify",
     "Notion", "Asana", "Trello", "Jira", "Monday.com",
     "Sketch", "InVision", "Zeplin", "Miro", "Whimsical",
     "TensorFlow", "PyTorch", "Scikit-learn",
     "Machine Learning", "Deep Learning", "NLP",
+    // Digital Marketing & Content
+    "SMM", "Copywriting", "Content Writing", "Content Marketing", "Email Marketing",
+    "Performance Marketing", "Brand Management", "KOL", "Influencer Marketing",
+    "Social Media Analytics", "Google Analytics 4", "GA4",
+    "Marketplace", "Tokopedia", "Shopee", "Lazada", "TikTok Shop",
+    "CRO", "Landing Page", "WhatsApp Marketing", "WhatsApp Business",
+    "Content Creator", "Video Editing", "Editing", "Copywriter",
   ];
 
   const found: string[] = [];
@@ -125,7 +132,7 @@ function extractSkills(text: string): string[] {
   }
 
   // Also scrape from Skills section
-  const section = extractSection(text, ["Skills", "Keahlian", "Kemampuan", "Technical Skills", "Kompetensi", "Skill"]);
+  const section = extractSection(text, ["Skills", "Keahlian", "Kemampuan", "Technical Skills", "Hard Skills", "Hard Skill", "Kompetensi", "Skill", "Soft Skills", "Soft Skill"]);
   if (section) {
     for (const line of section.split("\n")) {
       for (const part of line.split(/[,|•\-·\/]/).map((s) => s.trim())) {
@@ -199,7 +206,7 @@ function countPassiveVerbs(text: string): number {
 
 function countMetrics(text: string): number {
   const hits = text.match(
-    /\d+\s*%|\d+\s*(?:orang|peserta|anggota|klien|project|pelanggan|pengguna|mahasiswa|user|tim|team)|\bRp\.?\s*[\d,.]+[KMBjuta]*|\b\d{1,3}(?:[.,]\d{3})+\b/gi
+    /\d+\s*%|\d+\s*(?:orang|peserta|anggota|klien|project|pelanggan|pengguna|mahasiswa|user|tim|team|leads?|sales?|artikel|artikel|accounts?|websites?|companies|perusahaan|bulan|hari|minggu|month|day|week)|\bRp\.?\s*[\d,.]+[KMBjuta]*|\bIDR\.?\s*[\d,.]+[KMBkm]*|\b\d+[KkMm]\b|\b\d+[Xx]\s*(?:ROAS|ROI|return|lipat)?|\bROAS\b.*?\d+|\bCTR\b.*?\d+|\bCPC\b.*?(?:IDR|Rp)|\bCPL\b.*?(?:IDR|Rp)|\b\d{1,3}(?:[.,]\d{3})+\b|\b\d{3,}\+/gi
   );
   return hits ? hits.length : 0;
 }
@@ -272,15 +279,26 @@ function transformWeakBullet(bullet: string): string {
   ];
 
   let result = bullet;
+  let wasPassive = false;
   for (const [rx, repl] of replacements) {
     if (rx.test(result)) {
       result = result.replace(rx, repl);
+      wasPassive = true;
       break;
     }
   }
 
   result = result.replace(/\.\s*$/, "");
-  result += " — [tambahkan: berapa orang terdampak / berapa % perubahan / dalam berapa waktu?]";
+
+  // If bullet already has metrics, don't demand numbers that are already there
+  const alreadyHasMetric = /\d+\s*%|\bIDR\b|\bRp\b|\d+[XxKkMm]\b|\d{3,}|\bROAS\b|\bCTR\b|\bCPC\b|\bCPL\b|\bROI\b/.test(bullet);
+  if (alreadyHasMetric && !wasPassive) {
+    result += " — [opsional: tambahkan scope tim, nama klien/brand, atau durasi jika belum ada]";
+  } else if (alreadyHasMetric && wasPassive) {
+    result += " — [angka sudah ada ✅ — pastikan kata kerja di depan menunjukkan dampak, bukan sekadar tugas]";
+  } else {
+    result += " — [tambahkan: berapa orang terdampak / berapa % perubahan / IDR berapa / dalam berapa waktu?]";
+  }
   return result.charAt(0).toUpperCase() + result.slice(1);
 }
 
@@ -356,12 +374,18 @@ function generateAnalysis(name: string, cvText: string, linkedinHeadline: string
   }
   if (!hasLinkedin) {
     problemList.push(
-      `**Tidak ada URL LinkedIn** yang disertakan — di 2025, rekruter mencari kandidat di LinkedIn sebelum membalas email`
+      `**LinkedIn belum diaudit** — sertakan teks Headline dan About LinkedIn untuk audit mendalam dan rekomendasi konkret`
     );
   }
   if (skills.length < 4) {
     problemList.push(
       `**Bagian Skills perlu diperkuat** — tool dan kemampuan teknis spesifik adalah keyword yang dibaca ATS sebelum rekruter manusia melihat CV`
+    );
+  }
+  // For strong CVs, flag scope/context as the upgrade area
+  if (passiveCount === 0 && hasMetrics && metricsCount >= 5 && skills.length >= 4) {
+    problemList.push(
+      `**Scope & konteks bisa diperkuat** — CV sudah punya angka dan kata kerja aktif. Upgrade berikutnya: tambahkan skala proyek (jumlah tim, budget dikelola, jumlah brand/klien) di setiap pengalaman untuk membedakan dari kandidat dengan pencapaian serupa`
     );
   }
 
@@ -578,13 +602,20 @@ ${buildHeadlineAnalysis()}${buildAboutAnalysis()}${!linkedinHeadline ? `**Catata
   const bulletRewrites = bulletsToRewrite.map((bullet, i) => {
     const transformed = transformWeakBullet(bullet);
     const isWeak = weakBullets.some((w) => w.toLowerCase() === bullet.toLowerCase());
-    return `**Poin ${i + 1}:**
+    const alreadyHasMetric = /\d+\s*%|\bIDR\b|\bRp\b|\d+[XxKkMm]\b|\d{3,}|\bROAS\b|\bCTR\b|\bCPC\b|\bCPL\b|\bROI\b/.test(bullet);
+    const bulletStatus = isWeak ? "⚠️ Kalimat pasif" : alreadyHasMetric ? "✅ Sudah ada angka" : "➡️ Aktif, perlu metrik";
+    const catatan = isWeak
+      ? "Kalimat pasif — ubah kata kerja pertama menjadi kata kerja dampak, lalu tambahkan angka."
+      : alreadyHasMetric
+      ? "Sudah pakai kata kerja aktif + ada metrik konkret. Cek: apakah scope (jumlah tim, nama brand, durasi) sudah disebutkan?"
+      : "Struktur kata kerja sudah aktif — satu tambahan yang akan memperkuat: sisipkan minimal satu angka konkret (%, IDR, jumlah).";
+    return `**Poin ${i + 1}** ${bulletStatus}:
 
 > **SEBELUM:** "${bullet}"
 
 > **SESUDAH:** "${transformed}"
 
-*Catatan: ${isWeak ? "Kalimat pasif — ubah kata kerja pertama menjadi kata kerja dampak, lalu tambahkan angka." : "Struktur sudah lebih aktif — pastikan ada minimal satu angka atau metrik konkret."}*`;
+*Catatan: ${catatan}*`;
   });
 
   if (bulletRewrites.length === 0) {
@@ -693,9 +724,9 @@ Cara optimal menggunakan dokumen ini: baca sekali dari awal sampai akhir, lalu k
 
 ${firstName}, ${openingCtxStr}
 
-${problemList.length > 0 ? problemList.map((p, i) => `**Masalah ${i + 1}:** ${p}`).join("\n\n") : "Secara keseluruhan, CV dan personal brand kamu punya fondasi yang perlu dioptimalkan lebih jauh."}
+${problemList.length > 0 ? problemList.map((p, i) => `**${passiveCount === 0 && hasMetrics && metricsCount >= 5 && i === problemList.length - 1 ? "Upgrade Berikutnya" : `Temuan ${i + 1}`}:** ${p}`).join("\n\n") : "Secara keseluruhan, CV dan personal brand kamu punya fondasi yang perlu dioptimalkan lebih jauh."}
 
-Ini bukan tentang kemampuanmu. Masalahnya adalah **kemasan** — cara kamu mengkomunikasikan nilai nyata yang sudah ada di CV.${companyDesc ? ` Pengalaman di ${companyDesc} adalah aset yang kamu undervalue.` : university ? ` Background dari ${university} adalah modal yang belum dioptimalkan.` : ""}
+${passiveCount === 0 && hasMetrics && metricsCount >= 5 ? `CV ${firstName} sudah di atas rata-rata dari sisi kata kerja aktif dan kuantifikasi. Laporan ini fokus pada **fine-tuning positioning dan personal brand** — mengubah CV yang sudah bagus menjadi yang unforgettable.${companyDesc ? ` Track record di ${companyDesc} adalah aset yang bisa dikomunikasikan lebih tajam.` : ""}` : `Ini bukan tentang kemampuanmu. Masalahnya adalah **kemasan** — cara kamu mengkomunikasikan nilai nyata yang sudah ada di CV.${companyDesc ? ` Pengalaman di ${companyDesc} adalah aset yang kamu undervalue.` : university ? ` Background dari ${university} adalah modal yang belum dioptimalkan.` : ""}`}
 
 Kabar baiknya: **semua ini bisa diperbaiki**. Dalam laporan ini kamu akan mendapatkan:
 - Rewrite **setiap poin pengalaman** di CV dengan rumus dampak (bagian 4D)
@@ -743,17 +774,23 @@ ${linkedInSection}
 
 ### 2.1 — Pola Kalimat & Kata Kerja
 
-**TEMUAN:** ${passiveCount > 0 ? `Terdeteksi **${passiveCount} penggunaan kalimat pasif** di CV ${firstName}${passiveCount >= 3 ? ` — termasuk frasa "bertanggung jawab atas", "membantu", dan "melakukan" yang muncul berulang` : ""}. ` : "Penggunaan kata pasif minimal — ini lebih baik dari rata-rata. "}${allBullets.length > 0 ? `Total ${allBullets.length} bullet point terdeteksi.` : "Bullet point perlu ditambahkan dengan format yang benar."}
+**TEMUAN:** ${passiveCount > 0 ? `Terdeteksi **${passiveCount} penggunaan kalimat pasif** di CV ${firstName}${passiveCount >= 3 ? ` — termasuk frasa "bertanggung jawab atas", "membantu", dan "melakukan" yang muncul berulang` : ""}. ` : `✅ Tidak ditemukan kalimat pasif — CV ${firstName} sudah dominan menggunakan kata kerja aktif. Ini **di atas rata-rata** dari CV yang kami audit. `}${allBullets.length > 0 ? `Total ${allBullets.length} bullet point terdeteksi.` : "Bullet point perlu ditambahkan dengan format yang benar."}
 
-**ANALISA:** Rumus CV yang benar: **Kata Kerja Aksi → Objek → Hasil Terukur → Metode/Konteks**. Kalimat pasif hanya mendeskripsikan tugas — bukan membedakan kontribusimu. Rekruter yang membaca 200 CV per hari tidak punya waktu menyimpulkan dampakmu sendiri.
+**ANALISA:** Rumus CV yang benar: **Kata Kerja Aksi → Objek → Hasil Terukur → Metode/Konteks**. ${passiveCount === 0 ? `CV ${firstName} sudah menggunakan pola ini dengan baik. Fokus audit beralih ke konsistensi metrik dan kekuatan konteks di setiap bullet.` : "Kalimat pasif hanya mendeskripsikan tugas — bukan membedakan kontribusimu. Rekruter yang membaca 200 CV per hari tidak punya waktu menyimpulkan dampakmu sendiri."}
 
-**TIGA POLA BERMASALAH YANG DITEMUKAN:**
+${passiveCount > 0 ? `**POLA BERMASALAH YANG DITEMUKAN:**
 
 | # | Pola | Contoh Dari CV | Solusi |
 |---|------|----------------|--------|
-| 1 | Kata kerja pasif | ${weakBullets.length > 0 ? `"${weakBullets[0].slice(0, 60)}..."` : '"Bertanggung jawab atas..."'} | Ganti kata kerja dampak: Mengembangkan, Memimpin, Meningkatkan |
+| 1 | Kata kerja pasif | ${weakBullets.length > 0 ? `"${weakBullets[0].slice(0, 60)}..."` : '"(lihat bullet di atas)"'} | Ganti kata kerja dampak: Mengembangkan, Memimpin, Meningkatkan |
 | 2 | Tidak ada angka | Klaim tanpa data kuantitatif | Tambahkan: berapa orang, berapa %, berapa bulan, berapa budget |
-| 3 | Deskripsi terlalu singkat | Bullet 1–5 kata tanpa konteks | Perluas: Kata Kerja + Objek + Hasil + Konteks |
+| 3 | Deskripsi terlalu singkat | Bullet 1–5 kata tanpa konteks | Perluas: Kata Kerja + Objek + Hasil + Konteks |` : `**AREA UPGRADE YANG MASIH TERSEDIA:**
+
+| # | Area | Status | Peluang |
+|---|------|--------|---------|
+| 1 | Kata kerja aktif | ✅ Sudah baik | Pertahankan — tambahkan konteks aksi jika ada bullet yang masih ringkas |
+| 2 | Angka & metrik | ${hasMetrics ? `✅ Ada (${metricsCount}+ data point)` : "⚠️ Perlu diperkuat"} | Cek: apakah setiap pengalaman punya minimal 1 angka? |
+| 3 | Scope & konteks | ➡️ Bisa diperluas | Tambahkan: jumlah tim, budget dikelola, nama brand/klien, skala proyek |`}
 
 **ASET TERSEMBUNYI DI CV INI:**
 ${gpa ? `- IPK ${gpa} dari ${university || "universitas"} — angka konkret yang memperkuat narasi` : ""}
@@ -761,25 +798,25 @@ ${companies.length > 0 ? companies.map((c) => `- Pengalaman di ${c} — nama bra
 ${skills.length > 0 ? `- Skill ${skills.slice(0, 4).join(", ")} — keyword ATS yang sudah ada, tapi belum diekspos optimal` : ""}
 ${gpa || companies.length > 0 || skills.length > 0 ? "" : "- Setiap pengalaman yang dicantumkan mengandung cerita yang belum diekstrak sepenuhnya"}
 
-**DAMPAK:** ${passiveCount >= 3 ? `Dengan ${passiveCount} kalimat pasif, CV ${firstName} bercerita tentang apa yang dilakukan — bukan apa yang dicapai. Ini menempatkan kandidat di kategori "average" dalam 6 detik pertama screening rekruter.` : "Setiap kalimat pasif adalah peluang yang hilang untuk menunjukkan nilai nyata kepada rekruter."}
+**DAMPAK:** ${passiveCount >= 3 ? `Dengan ${passiveCount} kalimat pasif, CV ${firstName} bercerita tentang apa yang dilakukan — bukan apa yang dicapai. Ini menempatkan kandidat di kategori "average" dalam 6 detik pertama screening rekruter.` : passiveCount > 0 ? "Kalimat pasif yang tersisa adalah peluang yang masih belum dikonversi menjadi bukti dampak nyata." : `CV ${firstName} sudah ada di kuadran atas dari sisi kata kerja. Peningkatan selanjutnya ada di konsistensi angka dan kejelasan scope di setiap pengalaman.`}
 
-**REKOMENDASI:** Terapkan rumus dampak untuk **setiap** bullet point. Rewrite lengkap ada di bagian 4D.
+**REKOMENDASI:** ${passiveCount > 0 ? `Terapkan rumus dampak untuk **setiap** bullet point pasif. ` : ""}Cek rewrite seluruh bullet di bagian 4D — bahkan bullet yang sudah kuat bisa dipoles untuk menambah konteks scope.
 
-**PRIORITAS: 🔴 SANGAT TINGGI**
+**PRIORITAS: ${passiveCount >= 3 ? "🔴 SANGAT TINGGI" : passiveCount > 0 ? "🔴 TINGGI" : "🟡 SEDANG — Fondasi sudah kuat, ini fine-tuning"}**
 
 ---
 
 ### 2.2 — Metrik & Kuantifikasi
 
-**TEMUAN:** ${!hasMetrics ? `Hampir tidak ada metrik terukur — hanya **${metricsCount} data point numerik** yang terdeteksi di seluruh CV.` : `Ada **${metricsCount} data terukur** — fondasi ada, tapi masih bisa ditingkatkan signifikan.`}
+**TEMUAN:** ${!hasMetrics ? `Hampir tidak ada metrik terukur — hanya **${metricsCount} data point numerik** yang terdeteksi di seluruh CV.` : metricsCount >= 10 ? `✅ **${metricsCount}+ data terukur** terdeteksi di CV — ini kekuatan utama ${firstName}. Angka dan metrik konkret sudah ada di hampir setiap pengalaman.` : `Ada **${metricsCount} data terukur** — fondasi ada, tapi masih bisa ditingkatkan signifikan.`}
 
-**ANALISA:** Kandidat yang mencantumkan angka spesifik mendapat 38% lebih banyak respons dari rekruter (berdasarkan analisis LinkedIn). Angka tidak harus sempurna — estimasi yang logis selalu lebih baik dari klaim abstrak.
+**ANALISA:** Kandidat yang mencantumkan angka spesifik mendapat 38% lebih banyak respons dari rekruter (berdasarkan analisis LinkedIn). ${hasMetrics && metricsCount >= 10 ? `CV ${firstName} sudah memenuhi standar ini dengan baik. Fokus selanjutnya: pastikan angka-angka tersebut dikontekstualisasikan dengan jelas (siapa yang terdampak, dibandingkan dengan apa, dalam berapa waktu).` : "Angka tidak harus sempurna — estimasi yang logis selalu lebih baik dari klaim abstrak."}
 
-**DAMPAK:** Tanpa metrik, pernyataan seperti "meningkatkan engagement" atau "mengelola tim" tidak bisa dibedakan dari klaim kandidat manapun.
+**DAMPAK:** ${!hasMetrics ? "Tanpa metrik, pernyataan seperti \"meningkatkan engagement\" atau \"mengelola tim\" tidak bisa dibedakan dari klaim kandidat manapun." : metricsCount >= 10 ? `Dengan ${metricsCount}+ data point, CV ${firstName} sudah di posisi yang jauh lebih kuat dibanding mayoritas kandidat. Metrik yang ada bisa dikontekstualisasikan lebih tajam untuk impact yang lebih besar.` : "Metrik yang ada perlu diperluas ke setiap pengalaman — tidak hanya beberapa poin saja."}
 
-**REKOMENDASI:** Untuk setiap pengalaman, jawab minimal satu: berapa orang terdampak? berapa % perubahannya? berapa budget? dalam berapa bulan? Lihat contoh konkret di bagian 4D.
+**REKOMENDASI:** ${!hasMetrics ? "Untuk setiap pengalaman, jawab minimal satu: berapa orang terdampak? berapa % perubahannya? berapa budget? dalam berapa bulan? Lihat contoh konkret di bagian 4D." : metricsCount >= 10 ? "Untuk setiap angka yang sudah ada, tambahkan konteks pembanding: \"ROAS 25X dibanding rata-rata industri X%\" atau \"890 leads/bulan dari zero baseline\". Ini mengubah angka biasa menjadi bukti keahlian." : "Perluas metrik ke pengalaman yang belum punya angka. Lihat contoh konkret di bagian 4D."}
 
-**PRIORITAS: 🔴 TINGGI**
+**PRIORITAS: ${!hasMetrics ? "🔴 TINGGI" : metricsCount >= 10 ? "🟢 BAIK — Pertahankan dan perkuat konteks" : "🟡 SEDANG"}**
 
 ---
 
