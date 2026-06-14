@@ -39,31 +39,74 @@ interface LinkedInProfile {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseApifyDate(d: any): { year: number; month: number } | null {
+  if (!d) return null;
+  // already an object like { year, month }
+  if (typeof d === "object" && d.year) return { year: Number(d.year), month: Number(d.month ?? 1) };
+  const s = String(d);
+  // "YYYY-MM" or "YYYY-MM-DD"
+  const iso = s.match(/^(\d{4})-(\d{2})/);
+  if (iso) return { year: parseInt(iso[1]), month: parseInt(iso[2]) };
+  // "YYYY" only
+  const yearOnly = s.match(/^(\d{4})$/);
+  if (yearOnly) return { year: parseInt(yearOnly[1]), month: 1 };
+  // "Month YYYY" e.g. "January 2020"
+  const months: Record<string, number> = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+  const monthYear = s.match(/([a-zA-Z]{3,})\s+(\d{4})/);
+  if (monthYear) {
+    const m = months[monthYear[1].slice(0,3).toLowerCase()];
+    if (m) return { year: parseInt(monthYear[2]), month: m };
+  }
+  return null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapApifyToProfile(item: any): LinkedInProfile {
+  const firstName = item.firstName ?? "";
+  const lastName = item.lastName ?? "";
+  const fullNameFallback = [firstName, lastName].filter(Boolean).join(" ") || null;
+
+  // experience can be nested under various keys
+  const rawExp: any[] = item.experience ?? item.experiences ?? item.positions ?? item.workExperience ?? item.jobs ?? [];
+  // education similar
+  const rawEdu: any[] = item.education ?? item.educations ?? [];
+  // skills: array of strings or objects
+  const rawSkills: any[] = item.skills ?? item.skillEndorsements ?? [];
+
   return {
-    full_name: item.name ?? item.fullName ?? null,
-    headline: item.headline ?? item.title ?? null,
-    summary: item.summary ?? item.about ?? item.description ?? null,
-    profile_pic_url: item.profilePicture ?? item.profilePicUrl ?? item.photo ?? null,
-    background_cover_image_url: item.backgroundImage ?? item.coverImage ?? null,
-    connections: item.connectionsCount ?? item.connections ?? null,
-    follower_count: item.followersCount ?? item.followers ?? null,
-    experiences: (item.experience ?? item.experiences ?? []).map((e: any) => ({
-      company: e.company ?? e.companyName ?? null,
-      title: e.title ?? e.position ?? null,
-      description: e.description ?? null,
-      starts_at: e.startDate ? { year: new Date(e.startDate).getFullYear(), month: new Date(e.startDate).getMonth() + 1 } : null,
-      ends_at: e.endDate ? { year: new Date(e.endDate).getFullYear(), month: new Date(e.endDate).getMonth() + 1 } : null,
+    full_name: item.name ?? item.fullName ?? item.full_name ?? fullNameFallback,
+    headline: item.headline ?? item.title ?? item.currentPosition ?? null,
+    summary: item.summary ?? item.about ?? item.description ?? item.bio ?? null,
+    profile_pic_url: item.profilePicture ?? item.profilePicUrl ?? item.photo ?? item.avatar ?? item.image ?? null,
+    background_cover_image_url: item.backgroundImage ?? item.coverImage ?? item.backgroundCoverImageUrl ?? null,
+    connections: typeof item.connectionsCount === "number" ? item.connectionsCount
+      : typeof item.connections === "number" ? item.connections
+      : typeof item.connectionCount === "number" ? item.connectionCount
+      : null,
+    follower_count: typeof item.followersCount === "number" ? item.followersCount
+      : typeof item.followers === "number" ? item.followers
+      : typeof item.followerCount === "number" ? item.followerCount
+      : null,
+    experiences: rawExp.map((e: any) => ({
+      company: e.company ?? e.companyName ?? e.organization ?? e.employer ?? null,
+      title: e.title ?? e.position ?? e.role ?? e.jobTitle ?? null,
+      description: e.description ?? e.summary ?? e.details ?? null,
+      starts_at: parseApifyDate(e.startDate ?? e.start ?? e.from ?? e.startedAt ?? null),
+      ends_at: parseApifyDate(e.endDate ?? e.end ?? e.to ?? e.endedAt ?? null),
     })),
-    education: (item.education ?? []).map((e: any) => ({
-      school: e.school ?? e.schoolName ?? null,
-      degree_name: e.degree ?? e.degreeName ?? null,
-      field_of_study: e.fieldOfStudy ?? e.field ?? null,
-      starts_at: e.startDate ? { year: new Date(e.startDate).getFullYear() } : null,
-      ends_at: e.endDate ? { year: new Date(e.endDate).getFullYear() } : null,
+    education: rawEdu.map((e: any) => ({
+      school: e.school ?? e.schoolName ?? e.institution ?? e.university ?? null,
+      degree_name: e.degree ?? e.degreeName ?? e.degreeType ?? null,
+      field_of_study: e.fieldOfStudy ?? e.field ?? e.major ?? e.subject ?? null,
+      starts_at: parseApifyDate(e.startDate ?? e.start ?? null),
+      ends_at: parseApifyDate(e.endDate ?? e.end ?? null),
     })),
-    skills: (item.skills ?? []).map((s: any) => (typeof s === "string" ? s : s.name ?? s.skill ?? "")).filter(Boolean),
-    certifications: (item.certifications ?? []).map((c: any) => ({ name: typeof c === "string" ? c : c.name ?? null })),
+    skills: rawSkills
+      .map((s: any) => (typeof s === "string" ? s : s.name ?? s.skill ?? s.text ?? ""))
+      .filter((s: string) => s.length > 0),
+    certifications: (item.certifications ?? item.licenses ?? []).map((c: any) => ({
+      name: typeof c === "string" ? c : c.name ?? c.title ?? null,
+    })),
     recommendations: item.recommendations ?? [],
   };
 }
@@ -72,21 +115,35 @@ async function fetchLinkedInProfile(linkedinUrl: string): Promise<LinkedInProfil
   const apifyToken = process.env.APIFY_API_TOKEN;
   const proxycurlKey = process.env.PROXYCURL_API_KEY;
 
-  // Try Apify first (harvestapi/linkedin-profile-search)
+  // Try Apify — harvestapi/linkedin-profile-search
   if (apifyToken) {
-    try {
-      const client = new ApifyClient({ token: apifyToken });
-      const run = await client.actor("harvestapi/linkedin-profile-search").call(
-        { profileUrls: [linkedinUrl] },
-        { waitSecs: 30 }
-      );
-      const { items } = await client.dataset(run.defaultDatasetId).listItems();
-      if (items.length > 0) {
-        console.log("Apify LinkedIn fetched:", items[0]);
-        return mapApifyToProfile(items[0]);
+    // Normalize URL: ensure no trailing query params that confuse the actor
+    let normalizedUrl = linkedinUrl.trim().replace(/\/+$/, "") + "/";
+
+    // Try two common input formats that different versions of the actor accept
+    const inputFormats = [
+      { profileUrls: [normalizedUrl] },
+      { startUrls: [{ url: normalizedUrl }] },
+      { urls: [normalizedUrl] },
+    ];
+
+    for (const actorInput of inputFormats) {
+      try {
+        const client = new ApifyClient({ token: apifyToken });
+        const run = await client.actor("harvestapi/linkedin-profile-search").call(
+          actorInput,
+          { waitSecs: 50, memory: 256 }
+        );
+        const { items } = await client.dataset(run.defaultDatasetId).listItems();
+        if (items.length > 0) {
+          console.log("[Apify] fetched with input:", JSON.stringify(actorInput));
+          console.log("[Apify] raw keys:", Object.keys(items[0]).join(", "));
+          return mapApifyToProfile(items[0]);
+        }
+        console.log("[Apify] empty result for input:", JSON.stringify(actorInput));
+      } catch (err) {
+        console.error("[Apify] error with input", JSON.stringify(actorInput), ":", err);
       }
-    } catch (err) {
-      console.error("Apify fetch error:", err);
     }
   }
 
@@ -98,9 +155,9 @@ async function fetchLinkedInProfile(linkedinUrl: string): Promise<LinkedInProfil
         { headers: { Authorization: `Bearer ${proxycurlKey}` }, signal: AbortSignal.timeout(15000) }
       );
       if (res.ok) return (await res.json()) as LinkedInProfile;
-      console.error("Proxycurl error:", res.status);
+      console.error("[Proxycurl] error:", res.status, await res.text());
     } catch (err) {
-      console.error("Proxycurl fetch error:", err);
+      console.error("[Proxycurl] fetch error:", err);
     }
   }
 
@@ -583,7 +640,91 @@ Headline langsung yang bisa dipakai: *"${exampleHeadline}"*
 
 **REKOMENDASI:** ${linkedInProfile.skills && linkedInProfile.skills.length > 0 ? `Sinkronkan dengan CV: ${skills.length > 0 ? skills.slice(0, 5).join(", ") : "tool teknis utama"}. Tambahkan yang belum ada.` : `Tambahkan minimal 10 skill: ${skills.length > 0 ? skills.slice(0, 6).join(", ") : "tool teknis yang dikuasai"}. Minta endorsement dari 3+ koneksi.`}
 
+**PRIORITAS: 🟡 SEDANG**
+
+---
+
+${(() => {
+  // Deep audit of LinkedIn experiences
+  if (!linkedInProfile.experiences || linkedInProfile.experiences.length === 0) {
+    return `**TEMUAN:** Bagian Pengalaman di LinkedIn tidak terdeteksi atau kosong.\n\n**ANALISA:** Bagian Pengalaman adalah konten paling sering dibuka rekruter setelah headline. Tanpa ini, profil terlihat seperti akun baru yang tidak credible.\n\n**REKOMENDASI:** Salin minimal 3 posisi dari CV ke LinkedIn. Gunakan format dampak dari bagian 4D — bukan sekadar copy-paste CV lama.\n\n**PRIORITAS: 🔴 SANGAT TINGGI**`;
+  }
+
+  const expAuditRows = linkedInProfile.experiences.map((exp, i) => {
+    const role = exp.title || "(jabatan tidak diisi)";
+    const company = exp.company || "(perusahaan tidak diisi)";
+    const desc = exp.description || "";
+    const hasDesc = desc.length > 0;
+    const hasNumbers = /\d/.test(desc);
+    const isPassive = /\b(bertanggung jawab|bertanggungjawab|membantu|melakukan|melaksanakan|responsible for|assist|participated)\b/i.test(desc);
+    const isShort = hasDesc && desc.length < 80;
+    const period = (() => {
+      const sy = exp.starts_at?.year;
+      const ey = exp.ends_at?.year;
+      if (!sy) return "-";
+      return ey ? `${sy}–${ey}` : `${sy}–sekarang`;
+    })();
+    const status = !hasDesc ? "❌ Kosong" : isShort ? "⚠️ Terlalu singkat" : isPassive ? "⚠️ Pasif" : !hasNumbers ? "⚠️ Tanpa angka" : "✅ OK";
+    return `| ${i + 1} | ${role} @ ${company} | ${period} | ${status} | ${!hasDesc ? "Tambahkan deskripsi segera" : isPassive ? "Ganti kata kerja pasif" : !hasNumbers ? "Tambahkan minimal 1 angka" : "Pertahankan, cek keyword ATS"} |`;
+  }).join("\n");
+
+  const expRewrites = linkedInProfile.experiences.slice(0, 5).map((exp, i) => {
+    const role = exp.title || "Jabatan";
+    const company = exp.company || "Perusahaan";
+    const desc = exp.description || "";
+    const after = desc.length > 0
+      ? transformWeakBullet(desc.split(/[.\n]/)[0].trim() || desc.slice(0, 120))
+      : `Mengeksekusi tanggung jawab sebagai ${role} di ${company} — [tambahkan: hasil terukur, jumlah orang terdampak, % peningkatan, atau budget yang dikelola]`;
+    return `**Pengalaman ${i + 1}: ${role} @ ${company}**\n\n> **SEBELUM (LinkedIn saat ini):** "${desc.slice(0, 200) || "(deskripsi kosong)"}${desc.length > 200 ? "..." : ""}"\n\n> **SESUDAH:** "${after}"\n`;
+  }).join("\n---\n\n");
+
+  const totalExp = linkedInProfile.experiences.length;
+  const emptyDesc = linkedInProfile.experiences.filter(e => !e.description || e.description.length === 0).length;
+  const passiveDesc = linkedInProfile.experiences.filter(e => e.description && /\b(bertanggung jawab|membantu|melakukan|responsible for|assist)\b/i.test(e.description)).length;
+  const noNumbers = linkedInProfile.experiences.filter(e => e.description && !/\d/.test(e.description)).length;
+
+  return `**TEMUAN:** ${totalExp} pengalaman kerja terdeteksi di LinkedIn ${firstName}. Ringkasan kualitas deskripsi:
+
+| # | Posisi | Periode | Status | Tindakan |
+|---|--------|---------|--------|----------|
+${expAuditRows}
+
+**Ringkasan masalah:**
+- ${emptyDesc} dari ${totalExp} pengalaman **tidak ada deskripsi sama sekali**
+- ${passiveDesc} dari ${totalExp} pengalaman **menggunakan kalimat pasif**
+- ${noNumbers} dari ${totalExp} pengalaman **tidak ada angka/metrik**
+
+**ANALISA:** Rekruter yang mengklik profil LinkedIn ${firstName} dan membuka tab Pengalaman akan melihat ${emptyDesc > 0 ? `${emptyDesc} posisi tanpa deskripsi apapun — ini mengirim sinyal bahwa kandidat tidak serius mengoptimalkan profil.` : "deskripsi yang perlu ditingkatkan dari sisi dampak dan metrik."}
+
+**DAMPAK:** Deskripsi pengalaman di LinkedIn bukan sekadar duplikasi CV — ini adalah narasi yang bisa lebih panjang, lebih personal, dan dioptimalkan untuk keyword pencarian rekruter.
+
+**REKOMENDASI — Rewrite Setiap Deskripsi Pengalaman LinkedIn:**
+
+${expRewrites}
+
+**PRIORITAS: 🔴 SANGAT TINGGI**`;
+})()}
+
+${(() => {
+  if (!linkedInProfile.connections && !linkedInProfile.follower_count) return "";
+  const conn = linkedInProfile.connections ?? 0;
+  const foll = linkedInProfile.follower_count ?? 0;
+  const connLabel = conn >= 500 ? "500+" : conn >= 100 ? "100–499" : conn > 0 ? `${conn}` : "tidak terdeteksi";
+  const connAdvice = conn >= 500
+    ? "Network sudah solid. Fokus pada kualitas konten untuk mengkonversi koneksi menjadi peluang aktif."
+    : conn >= 100
+    ? "Network sedang berkembang. Target tambah 50 koneksi relevan per bulan dari rekruter dan senior di industri."
+    : "Network masih sangat terbatas. Kirim 10 connection request per hari ke rekruter, alumni, dan profesional di industri yang sama.";
+  return `---
+
+**TEMUAN:** Koneksi LinkedIn: **${connLabel}**${foll > 0 ? `. Follower: **${foll}**` : ""}.
+
+**ANALISA:** Koneksi 500+ memberi sinyal kredibilitas sosial yang dibaca rekruter secara tidak sadar. Follower count yang tinggi menunjukkan konten punya distribusi organik.
+
+**REKOMENDASI:** ${connAdvice}
+
 **PRIORITAS: 🟡 SEDANG**`;
+})()}`;
   } else {
     linkedInSection = `### Audit LinkedIn ${firstName} — URL Ada, Data Perlu Verifikasi Manual
 
