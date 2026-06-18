@@ -1532,7 +1532,7 @@ Tabel skor personal branding ${firstName} — 6 komponen (Fondasi LinkedIn, CV &
 
 # PENUTUP DARI DONATALKS
 
-Tulis penutup yang personal — sebutkan 1–2 hal spesifik dari CV ${firstName} yang menunjukkan potensi nyata yang belum dioptimalkan. Jujur, warm, dan mendorong aksi. Maksimal 150 kata. Tutup dengan tanda tangan "— Tim DonaTalks".
+Tulis penutup yang personal — sebutkan 1–2 hal spesifik dari CV ${firstName} yang menunjukkan potensi nyata yang belum dioptimalkan. Jujur, warm, dan mendorong aksi. Maksimal 150 kata. Tutup dengan tanda tangan "— Tim DonaTalks".`;
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
