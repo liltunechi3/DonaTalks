@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { v4 as uuidv4 } from "uuid";
 
+const PRICE = 10000;
+
 export async function POST(request: NextRequest) {
   try {
     const { analysis_id } = await request.json();
@@ -10,7 +12,6 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "analysis_id wajib diisi" }, { status: 400 });
     }
 
-    // Verify analysis exists
     const { data: analysis, error: fetchError } = await supabaseServer
       .from("analyses")
       .select("id, is_paid")
@@ -26,62 +27,71 @@ export async function POST(request: NextRequest) {
     }
 
     const payment_id = uuidv4();
-    const amount = 99000;
-    const currency = "IDR";
 
-    // Insert pending payment
     const { error: paymentError } = await supabaseServer.from("payments").insert({
       id: payment_id,
       analysis_id,
-      amount,
-      currency,
+      amount: PRICE,
+      currency: "IDR",
       status: "pending",
-      scalev_transaction_id: null,
+      scalev_transaction_id: `pending_${payment_id}`,
     });
 
     if (paymentError) {
       console.error("Payment insert error:", paymentError);
-      return Response.json({ error: "Gagal membuat pembayaran" }, { status: 500 });
+      return Response.json({ error: `Gagal membuat pembayaran: ${paymentError.message} (${paymentError.code})` }, { status: 500 });
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
-    // ScaleV payment integration
     const scaleVApiKey = process.env.SCALEV_API_KEY;
     const scaleVMerchantId = process.env.SCALEV_MERCHANT_ID;
 
-    if (scaleVApiKey && scaleVMerchantId && scaleVApiKey !== "your-scalev-api-key-here") {
+    if (scaleVApiKey && scaleVMerchantId) {
       try {
-        const scaleVRes = await fetch("https://api.scalev.id/v1/payment/create", {
+        // Try ScaleV payment link creation
+        const scaleVRes = await fetch("https://api.scalev.id/v1/payment-link", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${scaleVApiKey}`,
             "Content-Type": "application/json",
+            "X-Merchant-ID": scaleVMerchantId,
           },
           body: JSON.stringify({
             merchant_id: scaleVMerchantId,
-            amount,
-            currency,
-            description: `DonaTalks Analisa CV - ${analysis_id}`,
+            amount: PRICE,
+            currency: "IDR",
+            title: "DonaTalks — Analisa CV & Personal Brand",
+            description: `Buka analisa penuh untuk laporan ID ${analysis_id.slice(0, 8)}`,
             reference_id: payment_id,
             callback_url: `${appUrl}/api/payment/webhook`,
-            return_url: `${appUrl}/analisa/${analysis_id}`,
+            success_redirect_url: `${appUrl}/analisa/${analysis_id}`,
+            failure_redirect_url: `${appUrl}/analisa/${analysis_id}`,
           }),
         });
 
+        const scaleVText = await scaleVRes.text();
+        console.log("ScaleV response:", scaleVRes.status, scaleVText);
+
         if (scaleVRes.ok) {
-          const scaleVData = await scaleVRes.json();
-          return Response.json({
-            payment_id,
-            payment_url: scaleVData.payment_url || scaleVData.redirect_url,
-          });
+          const scaleVData = JSON.parse(scaleVText);
+          const paymentUrl =
+            scaleVData.payment_url ||
+            scaleVData.redirect_url ||
+            scaleVData.checkout_url ||
+            scaleVData.url ||
+            scaleVData.data?.payment_url ||
+            scaleVData.data?.url;
+
+          if (paymentUrl) {
+            return Response.json({ payment_id, payment_url: paymentUrl });
+          }
         }
       } catch (scaleVErr) {
         console.error("ScaleV API error:", scaleVErr);
       }
     }
 
-    // Fallback: return a mock payment URL for development/testing
+    // Fallback: mock payment page
     const mockPaymentUrl = `${appUrl}/payment-pending?payment_id=${payment_id}&analysis_id=${analysis_id}`;
     return Response.json({ payment_id, payment_url: mockPaymentUrl });
   } catch (err: unknown) {

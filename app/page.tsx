@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
+
+const G = "#1E3832";
+const C = "#F5F0E8";
 
 function getSessionId(): string {
   if (typeof window === "undefined") return uuidv4();
@@ -17,19 +20,44 @@ function getSessionId(): string {
 export default function Home() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [linkedinHeadline, setLinkedinHeadline] = useState("");
+  const [linkedinAbout, setLinkedinAbout] = useState("");
   const [cvText, setCvText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const [error, setError] = useState("");
+  const [fileName, setFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setParsing(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/parse-cv", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal membaca file");
+      setCvText(data.text);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Gagal membaca file. Coba lagi.");
+      setFileName("");
+    } finally {
+      setParsing(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !cvText.trim()) {
-      setError("Nama dan isi CV wajib diisi.");
+      setError("Nama dan CV wajib diisi.");
       return;
     }
     if (cvText.trim().length < 100) {
-      setError("CV terlalu pendek. Paste isi CV lengkap kamu ya.");
+      setError("CV terlalu pendek. Upload file CV atau paste teks lengkap kamu ya.");
       return;
     }
     setError("");
@@ -39,7 +67,13 @@ export default function Home() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, cv_text: cvText, linkedin_url: linkedinUrl || null, session_id }),
+        body: JSON.stringify({
+          name,
+          cv_text: cvText,
+          linkedin_headline: linkedinHeadline.trim() || null,
+          linkedin_about: linkedinAbout.trim() || null,
+          session_id,
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -55,188 +89,263 @@ export default function Home() {
 
   const features = [
     {
-      icon: "📋",
+      num: "01",
       title: "Audit CV Menyeluruh",
-      desc: "Setiap baris CV-mu dibedah pakai 'Rumus CV': kata kerja aksi + objek + hasil terukur + metode.",
+      desc: "Setiap baris CV dibedah menggunakan rumus dampak: kata kerja aksi, objek, hasil terukur, dan metode.",
     },
     {
-      icon: "🎯",
+      num: "02",
       title: "Strategi Positioning",
-      desc: "Niche, persona konten, dan content pillar yang disesuaikan dengan pengalamanmu.",
+      desc: "Niche, persona konten, dan content pillar yang disesuaikan langsung dari pengalamanmu.",
     },
     {
-      icon: "✍️",
+      num: "03",
       title: "Rewrite Siap Pakai",
-      desc: "Setiap baris CV ditulis ulang versi 'dampak' — tinggal copy-paste ke CV-mu.",
+      desc: "Setiap baris CV ditulis ulang versi dampak — tinggal salin ke CV-mu tanpa perlu mengarang ulang.",
     },
     {
-      icon: "💡",
+      num: "04",
       title: "30 Ide Konten LinkedIn",
-      desc: "Digali langsung dari pengalamanmu. Nggak perlu ngarang — bahan sudah ada.",
+      desc: "Digali langsung dari pengalamanmu. Materinya sudah ada — yang kurang hanya cara mengemasnya.",
     },
     {
-      icon: "🏆",
+      num: "05",
       title: "Skor Personal Branding",
-      desc: "Tahu persis di area mana kamu sudah kuat dan mana yang perlu dibenahi.",
+      desc: "Tahu persis di area mana kamu sudah kuat dan mana yang perlu dibenahi, dalam angka.",
     },
     {
-      icon: "📅",
+      num: "06",
       title: "Rencana Eksekusi 3 Bulan",
-      desc: "Anti-burnout. Sistem yang bisa jalan sambil kuliah atau kerja.",
+      desc: "Sistem yang bisa berjalan sambil kuliah atau kerja. Tidak butuh waktu ekstra, hanya konsistensi.",
     },
   ];
 
+  const inputStyle = {
+    borderColor: `rgba(30,56,50,0.2)`,
+    backgroundColor: "#fff",
+    color: G,
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: "6px",
+    border: "1px solid rgba(30,56,50,0.2)",
+    fontSize: "0.875rem",
+    outline: "none",
+    lineHeight: "1.6",
+  };
+
   return (
-    <div className="min-h-screen">
+    <div style={{ backgroundColor: C, color: G, fontFamily: "inherit" }}>
+
+      {/* NAV */}
+      <nav style={{ backgroundColor: G, borderBottom: `1px solid rgba(245,240,232,0.08)` }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 24px", height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ color: C, fontWeight: 700, fontSize: "1rem", letterSpacing: "0.04em" }}>
+            DonaTalks
+          </span>
+          <span style={{ color: `rgba(245,240,232,0.45)`, fontSize: "0.75rem", letterSpacing: "0.15em", textTransform: "uppercase" }}>
+            Personal Branding &amp; Career Strategy
+          </span>
+        </div>
+      </nav>
+
       {/* HERO */}
-      <section style={{ backgroundColor: "#1E3832" }} className="relative overflow-hidden">
-        <div className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: "radial-gradient(circle at 20% 80%, #C4A35A 0%, transparent 50%), radial-gradient(circle at 80% 20%, #C4A35A 0%, transparent 50%)",
-          }}
-        />
-        <div className="relative max-w-5xl mx-auto px-6 pt-16 pb-24">
-          {/* Brand */}
-          <div className="text-center mb-16">
-            <div className="inline-block mb-4">
-              <span className="font-display text-3xl font-bold tracking-wide" style={{ color: "#C4A35A" }}>
-                DonaTalks
-              </span>
-              <p className="text-xs tracking-[0.3em] uppercase mt-1" style={{ color: "#8a9e99" }}>
-                Personal Branding &amp; Career Strategy
-              </p>
-            </div>
-
-            <h1 className="font-display text-4xl md:text-5xl font-bold leading-tight mb-6" style={{ color: "#F5F0E8" }}>
-              Dari CV yang{" "}
-              <span style={{ color: "#C4A35A" }}>Padat Prestasi</span>
-              <br />
-              Menjadi Personal Brand
-              <br />
-              yang <span style={{ color: "#C4A35A" }}>Kepake.</span>
+      <section style={{ backgroundColor: G }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "80px 24px 96px" }}>
+          <div style={{ maxWidth: 600 }}>
+            <p style={{ color: `rgba(245,240,232,0.45)`, fontSize: "0.75rem", letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 24 }}>
+              Laporan CV &amp; Personal Brand
+            </p>
+            <h1 style={{ color: C, fontSize: "clamp(2rem, 5vw, 3.25rem)", fontWeight: 700, lineHeight: 1.15, marginBottom: 20, letterSpacing: "-0.01em" }}>
+              Analisa mendalam.<br />
+              Rekomendasi konkret.
             </h1>
-
-            <p className="text-lg max-w-2xl mx-auto leading-relaxed" style={{ color: "#8a9e99" }}>
-              Audit mendalam CV &amp; personal branding-mu oleh AI — dengan gaya konsultan nyata,
-              bukan saran generik. Preview gratis,{" "}
-              <span style={{ color: "#C4A35A" }}>analisa penuh Rp 99.000.</span>
+            <p style={{ color: `rgba(245,240,232,0.65)`, fontSize: "1.05rem", lineHeight: 1.7, marginBottom: 8, maxWidth: 480 }}>
+              CV, LinkedIn, dan positioning personal brand kamu diaudit dengan standar konsultan karier —
+              bukan template generik.
+            </p>
+            <p style={{ color: `rgba(245,240,232,0.35)`, fontSize: "0.85rem", lineHeight: 1.6, maxWidth: 440 }}>
+              Gratis sepenuhnya. Laporan lengkap dan detail langsung tersedia.
             </p>
           </div>
+        </div>
+      </section>
 
-          {/* FORM */}
-          <div className="max-w-2xl mx-auto">
-            <div className="rounded-2xl p-8 shadow-2xl" style={{ backgroundColor: "#F8F6F1" }}>
-              <h2 className="font-display text-2xl font-bold mb-6" style={{ color: "#1E3832" }}>
+      {/* FORM */}
+      <section style={{ backgroundColor: C }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 24px" }}>
+          <div style={{ maxWidth: 640, margin: "0 auto", transform: "translateY(-48px)" }}>
+            <div style={{ backgroundColor: "#fff", border: `1px solid rgba(30,56,50,0.12)`, borderRadius: 8, padding: "40px 40px 36px", boxShadow: "0 8px 40px rgba(30,56,50,0.08)" }}>
+
+              <h2 style={{ color: G, fontSize: "1.35rem", fontWeight: 700, marginBottom: 6, letterSpacing: "-0.01em" }}>
                 Analisa CV Saya
               </h2>
+              <p style={{ color: `rgba(30,56,50,0.45)`, fontSize: "0.8rem", marginBottom: 28 }}>
+                Isi form di bawah — hasilnya siap dalam beberapa detik.
+              </p>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+                {/* Name */}
                 <div>
-                  <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
-                    Nama Lengkap *
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: G, marginBottom: 6, letterSpacing: "0.01em" }}>
+                    Nama Lengkap <span style={{ color: `rgba(30,56,50,0.35)` }}>*</span>
                   </label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Contoh: Maritsa Aurelia Nismara"
-                    className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all"
-                    style={{
-                      borderColor: "#d4c9b0",
-                      backgroundColor: "#fff",
-                      color: "#1E3832",
-                    }}
-                    onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
-                    onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
+                    placeholder="Contoh: Arifah Dona"
+                    style={inputStyle}
+                    onFocus={(e) => ((e.target as HTMLInputElement).style.borderColor = G)}
+                    onBlur={(e) => ((e.target as HTMLInputElement).style.borderColor = "rgba(30,56,50,0.2)")}
                     required
                   />
                 </div>
 
+                {/* CV File Upload */}
                 <div>
-                  <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
-                    LinkedIn URL{" "}
-                    <span className="font-normal" style={{ color: "#8a9e99" }}>
-                      (opsional)
-                    </span>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: G, marginBottom: 6 }}>
+                    Upload CV <span style={{ fontWeight: 400, color: `rgba(30,56,50,0.4)` }}>— PDF atau DOCX *</span>
                   </label>
-                  <input
-                    type="url"
-                    value={linkedinUrl}
-                    onChange={(e) => setLinkedinUrl(e.target.value)}
-                    placeholder="https://linkedin.com/in/username"
-                    className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all"
+
+                  <input ref={fileInputRef} type="file" accept=".pdf,.docx" onChange={handleFileChange} style={{ display: "none" }} />
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={parsing}
                     style={{
-                      borderColor: "#d4c9b0",
-                      backgroundColor: "#fff",
-                      color: "#1E3832",
+                      width: "100%",
+                      padding: "14px 16px",
+                      borderRadius: 6,
+                      border: `1.5px dashed ${fileName ? G : "rgba(30,56,50,0.25)"}`,
+                      backgroundColor: fileName ? `rgba(30,56,50,0.04)` : "#fafaf9",
+                      color: fileName ? G : `rgba(30,56,50,0.45)`,
+                      fontSize: "0.85rem",
+                      fontWeight: 500,
+                      cursor: parsing ? "wait" : "pointer",
+                      textAlign: "center",
+                      transition: "all 0.15s",
                     }}
-                    onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
-                    onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
-                  />
+                  >
+                    {parsing ? (
+                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                        <svg style={{ animation: "spin 1s linear infinite", height: 16, width: 16 }} viewBox="0 0 24 24" fill="none">
+                          <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Membaca file...
+                      </span>
+                    ) : fileName ? (
+                      <span>{fileName} <span style={{ color: `rgba(30,56,50,0.35)`, fontSize: "0.75rem" }}>(ganti file)</span></span>
+                    ) : (
+                      "Pilih file CV — PDF atau DOCX"
+                    )}
+                  </button>
+
+                  {cvText && !parsing && (
+                    <p style={{ fontSize: "0.75rem", color: `rgba(30,56,50,0.45)`, marginTop: 6 }}>
+                      {cvText.length.toLocaleString()} karakter berhasil dibaca
+                    </p>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-2" style={{ color: "#1E3832" }}>
-                    Isi CV *
-                  </label>
-                  <textarea
-                    value={cvText}
-                    onChange={(e) => setCvText(e.target.value)}
-                    placeholder="Paste isi CV kamu di sini — mulai dari summary, pengalaman, pendidikan, hingga prestasi. Semakin lengkap, semakin tajam analisanya."
-                    rows={10}
-                    className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all resize-y"
-                    style={{
-                      borderColor: "#d4c9b0",
-                      backgroundColor: "#fff",
-                      color: "#1E3832",
-                      lineHeight: "1.7",
-                    }}
-                    onFocus={(e) => (e.target.style.borderColor = "#C4A35A")}
-                    onBlur={(e) => (e.target.style.borderColor = "#d4c9b0")}
-                    required
-                  />
-                  <p className="text-xs mt-1" style={{ color: "#8a9e99" }}>
-                    {cvText.length > 0 && `${cvText.length} karakter`}
+                {/* CV text fallback */}
+                {!fileName && (
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", color: `rgba(30,56,50,0.45)`, marginBottom: 6 }}>
+                      Atau paste teks CV langsung
+                    </label>
+                    <textarea
+                      value={cvText}
+                      onChange={(e) => setCvText(e.target.value)}
+                      placeholder="Paste isi CV kamu di sini — summary, pengalaman, pendidikan, prestasi..."
+                      rows={5}
+                      style={{ ...inputStyle, resize: "vertical" }}
+                      onFocus={(e) => ((e.target as HTMLTextAreaElement).style.borderColor = G)}
+                      onBlur={(e) => ((e.target as HTMLTextAreaElement).style.borderColor = "rgba(30,56,50,0.2)")}
+                    />
+                  </div>
+                )}
+
+                {/* Divider */}
+                <div style={{ borderTop: `1px solid rgba(30,56,50,0.08)`, paddingTop: 4 }}>
+                  <p style={{ fontSize: "0.75rem", color: `rgba(30,56,50,0.35)`, marginBottom: 16, letterSpacing: "0.01em" }}>
+                    LinkedIn (opsional — untuk audit yang lebih mendalam)
                   </p>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: G, marginBottom: 6 }}>
+                        Headline LinkedIn
+                      </label>
+                      <input
+                        type="text"
+                        value={linkedinHeadline}
+                        onChange={(e) => setLinkedinHeadline(e.target.value)}
+                        placeholder='Contoh: Digital Marketing | SEO & SEM | Open to Opportunities'
+                        style={inputStyle}
+                        onFocus={(e) => ((e.target as HTMLInputElement).style.borderColor = G)}
+                        onBlur={(e) => ((e.target as HTMLInputElement).style.borderColor = "rgba(30,56,50,0.2)")}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: G, marginBottom: 6 }}>
+                        Bagian About / Summary LinkedIn
+                      </label>
+                      <textarea
+                        value={linkedinAbout}
+                        onChange={(e) => setLinkedinAbout(e.target.value)}
+                        placeholder="Paste isi bagian About di profil LinkedIn kamu di sini..."
+                        rows={4}
+                        style={{ ...inputStyle, resize: "vertical" }}
+                        onFocus={(e) => ((e.target as HTMLTextAreaElement).style.borderColor = G)}
+                        onBlur={(e) => ((e.target as HTMLTextAreaElement).style.borderColor = "rgba(30,56,50,0.2)")}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {error && (
-                  <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#fee2e2", color: "#991b1b" }}>
+                  <div style={{ padding: "12px 14px", borderRadius: 6, backgroundColor: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontSize: "0.8rem" }}>
                     {error}
                   </div>
                 )}
 
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="w-full py-4 rounded-xl font-semibold text-base transition-all disabled:opacity-70"
+                  disabled={loading || parsing}
                   style={{
-                    backgroundColor: loading ? "#8a9e99" : "#C4A35A",
-                    color: "#1E3832",
-                    cursor: loading ? "not-allowed" : "pointer",
+                    backgroundColor: loading || parsing ? `rgba(30,56,50,0.4)` : G,
+                    color: C,
+                    padding: "14px 24px",
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                    border: "none",
+                    cursor: loading || parsing ? "not-allowed" : "pointer",
+                    letterSpacing: "0.01em",
+                    transition: "opacity 0.15s",
                   }}
-                  onMouseEnter={(e) => {
-                    if (!loading) (e.target as HTMLButtonElement).style.backgroundColor = "#d4b878";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!loading) (e.target as HTMLButtonElement).style.backgroundColor = "#C4A35A";
-                  }}
+                  onMouseEnter={(e) => { if (!loading && !parsing) (e.target as HTMLButtonElement).style.opacity = "0.85"; }}
+                  onMouseLeave={(e) => { if (!loading && !parsing) (e.target as HTMLButtonElement).style.opacity = "1"; }}
                 >
                   {loading ? (
-                    <span className="flex items-center justify-center gap-3">
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                      <svg style={{ animation: "spin 1s linear infinite", height: 18, width: 18 }} viewBox="0 0 24 24" fill="none">
+                        <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      Sedang menganalisa CV kamu... (~30 detik)
+                      Sedang menganalisa CV kamu...
                     </span>
                   ) : (
-                    "Analisa CV Saya →"
+                    "Analisa CV Saya"
                   )}
                 </button>
 
-                <p className="text-xs text-center" style={{ color: "#8a9e99" }}>
-                  Preview gratis. Analisa penuh Rp 99.000 — bayar hanya kalau mau buka semua.
+                <p style={{ fontSize: "0.75rem", textAlign: "center", color: `rgba(30,56,50,0.35)` }}>
+                  Gratis. Laporan lengkap siap dalam beberapa detik.
                 </p>
               </form>
             </div>
@@ -245,63 +354,76 @@ export default function Home() {
       </section>
 
       {/* FEATURES */}
-      <section className="max-w-5xl mx-auto px-6 py-20">
-        <div className="text-center mb-12">
-          <h2 className="font-display text-3xl font-bold mb-4" style={{ color: "#1E3832" }}>
-            Apa yang Kamu Dapat?
-          </h2>
-          <p className="text-lg" style={{ color: "#5a7a74" }}>
-            Bukan coretan merah — tapi cetak biru yang bisa langsung dikerjakan.
-          </p>
-        </div>
+      <section style={{ backgroundColor: C, paddingBottom: 80 }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 24px" }}>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          {features.map((f, i) => (
-            <div
-              key={i}
-              className="p-6 rounded-2xl border transition-all hover:-translate-y-1"
-              style={{
-                backgroundColor: "#fff",
-                borderColor: "#e8e0d0",
-              }}
-            >
-              <div className="text-3xl mb-4">{f.icon}</div>
-              <h3 className="font-semibold mb-2" style={{ color: "#1E3832" }}>
-                {f.title}
-              </h3>
-              <p className="text-sm leading-relaxed" style={{ color: "#5a7a74" }}>
-                {f.desc}
-              </p>
-            </div>
-          ))}
+          <div style={{ marginBottom: 52 }}>
+            <p style={{ fontSize: "0.75rem", letterSpacing: "0.2em", textTransform: "uppercase", color: `rgba(30,56,50,0.4)`, marginBottom: 12 }}>
+              Yang kamu dapat
+            </p>
+            <h2 style={{ color: G, fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 700, letterSpacing: "-0.01em", maxWidth: 420, lineHeight: 1.25 }}>
+              Bukan coretan merah. Cetak biru yang bisa langsung dikerjakan.
+            </h2>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 1, border: `1px solid rgba(30,56,50,0.1)`, borderRadius: 8, overflow: "hidden", backgroundColor: `rgba(30,56,50,0.08)` }}>
+            {features.map((f) => (
+              <div
+                key={f.num}
+                style={{ backgroundColor: C, padding: "28px 28px 24px", display: "flex", flexDirection: "column", gap: 10 }}
+              >
+                <span style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.12em", color: `rgba(30,56,50,0.3)` }}>
+                  {f.num}
+                </span>
+                <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: G, lineHeight: 1.3 }}>
+                  {f.title}
+                </h3>
+                <p style={{ fontSize: "0.82rem", color: `rgba(30,56,50,0.6)`, lineHeight: 1.65 }}>
+                  {f.desc}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* HOW IT WORKS */}
-      <section style={{ backgroundColor: "#1E3832" }} className="py-20">
-        <div className="max-w-4xl mx-auto px-6">
-          <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold mb-4" style={{ color: "#F5F0E8" }}>
-              Cara Kerjanya
-            </h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-8">
+      <section style={{ backgroundColor: G, padding: "80px 0" }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 24px" }}>
+
+          <p style={{ fontSize: "0.75rem", letterSpacing: "0.2em", textTransform: "uppercase", color: `rgba(245,240,232,0.35)`, marginBottom: 12 }}>
+            Cara kerja
+          </p>
+          <h2 style={{ color: C, fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 700, letterSpacing: "-0.01em", marginBottom: 52 }}>
+            Tiga langkah. Selesai dalam menit.
+          </h2>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 40 }}>
             {[
-              { step: "01", title: "Paste CV-mu", desc: "Salin isi CV-mu ke form di atas. Semakin lengkap, semakin tajam analisanya." },
-              { step: "02", title: "Terima Preview Gratis", desc: "Dalam ~30 detik, baca Ringkasan Eksekutif & Konteks Klien. Gratis, tanpa perlu daftar." },
-              { step: "03", title: "Buka Analisa Penuh", desc: "Bayar Rp 99.000 sekali untuk akses semua: audit CV, rewrite siap pakai, 30 ide konten, rencana eksekusi." },
+              {
+                step: "01",
+                title: "Upload CV-mu",
+                desc: "Upload file PDF atau DOCX. Teks CV langsung dibaca otomatis — tidak perlu copy-paste manual.",
+              },
+              {
+                step: "02",
+                title: "Terima Laporan Lengkap",
+                desc: "Dalam hitungan detik, laporan penuh langsung tersedia — audit CV, rewrite siap pakai, 30 ide konten, rencana eksekusi.",
+              },
+              {
+                step: "03",
+                title: "Eksekusi",
+                desc: "Gunakan rekomendasi konkret untuk perbaiki CV dan bangun personal brand-mu. Semua instruksi siap, tinggal jalan.",
+              },
             ].map((s) => (
-              <div key={s.step} className="text-center">
-                <div
-                  className="font-display text-5xl font-bold mb-4"
-                  style={{ color: "#C4A35A", opacity: 0.4 }}
-                >
+              <div key={s.step} style={{ borderTop: `1px solid rgba(245,240,232,0.12)`, paddingTop: 20 }}>
+                <span style={{ display: "block", fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.12em", color: `rgba(245,240,232,0.25)`, marginBottom: 14 }}>
                   {s.step}
-                </div>
-                <h3 className="font-semibold text-lg mb-2" style={{ color: "#F5F0E8" }}>
+                </span>
+                <h3 style={{ color: C, fontWeight: 700, fontSize: "0.95rem", marginBottom: 10, lineHeight: 1.3 }}>
                   {s.title}
                 </h3>
-                <p className="text-sm leading-relaxed" style={{ color: "#8a9e99" }}>
+                <p style={{ color: `rgba(245,240,232,0.5)`, fontSize: "0.82rem", lineHeight: 1.65 }}>
                   {s.desc}
                 </p>
               </div>
@@ -311,14 +433,18 @@ export default function Home() {
       </section>
 
       {/* FOOTER */}
-      <footer className="py-8 text-center" style={{ backgroundColor: "#152b26" }}>
-        <p className="font-display text-lg font-bold" style={{ color: "#C4A35A" }}>
-          DonaTalks
-        </p>
-        <p className="text-xs mt-1" style={{ color: "#5a7a74" }}>
+      <footer style={{ backgroundColor: G, borderTop: `1px solid rgba(245,240,232,0.08)`, padding: "28px 24px", textAlign: "center" }}>
+        <span style={{ color: C, fontWeight: 700, fontSize: "0.9rem", letterSpacing: "0.04em" }}>DonaTalks</span>
+        <p style={{ color: `rgba(245,240,232,0.25)`, fontSize: "0.7rem", marginTop: 4, letterSpacing: "0.1em", textTransform: "uppercase" }}>
           Personal Branding &amp; Career Strategy
         </p>
       </footer>
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        input, textarea, button { font-family: inherit; }
+      `}</style>
     </div>
   );
 }
