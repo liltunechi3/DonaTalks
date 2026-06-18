@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { v4 as uuidv4 } from "uuid";
+import Anthropic from "@anthropic-ai/sdk";
 
 export const maxDuration = 60;
 
@@ -1291,6 +1292,214 @@ Kamu sudah punya petanya — sekarang saatnya jalan.
 }
 
 
+// ── Claude AI Analysis ────────────────────────────────────────────────────────
+
+async function generateAnalysisWithClaude(
+  name: string,
+  cvText: string,
+  linkedinHeadline: string | null,
+  linkedinAbout: string | null
+): Promise<string> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const firstName = name.split(" ")[0];
+  const linkedinSection = linkedinHeadline || linkedinAbout
+    ? `\n\nLINKEDIN DATA:\nHeadline: ${linkedinHeadline || "(tidak diberikan)"}\nAbout/Summary: ${linkedinAbout || "(tidak diberikan)"}`
+    : "\n\nLINKEDIN: Tidak diberikan.";
+
+  const prompt = `Kamu adalah konsultan karier dan personal branding senior di Indonesia. Kamu menulis laporan analisis mendalam yang terasa seperti ditulis oleh manusia yang benar-benar membaca dan memahami setiap kata di CV — bukan template generik.
+
+DATA KLIEN:
+Nama: ${name}
+CV:
+${cvText}
+${linkedinSection}
+
+Tulis laporan analisis LENGKAP dalam Bahasa Indonesia dengan format di bawah ini. PENTING:
+- Setiap rekomendasi harus SPESIFIK — sebut nama perusahaan, angka, skill, dan pengalaman nyata dari CV
+- Jangan gunakan placeholder seperti "[nama perusahaan]" kecuali kamu memang tidak tahu nilainya
+- Jangan generik. Rekruter dan konsultan sungguhan membaca ini
+- Gunakan markdown: heading ##/###, **bold**, > blockquote, tabel, dan list
+
+---
+
+# CARA MEMBACA DOKUMEN INI
+
+Dokumen ini bukan laporan akademis. Ini adalah peta kerja — detail, spesifik, dan dibuat khusus untuk ${firstName}.
+
+Cara optimal: baca sekali dari awal sampai akhir, lalu kembali ke bagian 4D dan eksekusi satu bullet point per hari.
+
+---
+
+# INVENTARIS INPUT & KONTEKS KLIEN
+
+Buat tabel inventaris input (CV, LinkedIn) dan tabel konteks klien (nama, level karir, industri, pendidikan, perusahaan utama, skills utama, jumlah pengalaman). Tulis kesimpulan singkat tentang profil klien.
+
+---
+
+# RINGKASAN EKSEKUTIF
+
+Tulis 3–4 paragraf yang benar-benar personal — sebutkan nama perusahaan, angka, skill, dan pengalaman spesifik dari CV. Identifikasi 2–4 temuan utama yang paling kritis. Akhiri dengan daftar apa yang akan didapat dari laporan ini.
+
+---
+
+# YANG SUDAH KUAT
+
+Tulis 5 poin kekuatan konkret yang ditemukan di CV. Sebutkan detail spesifik dari CV untuk setiap poin — bukan pujian generik.
+
+---
+
+# TEMUAN & REKOMENDASI
+
+## LEVEL 1 — Audit LinkedIn
+
+Berdasarkan data LinkedIn yang diberikan (atau rekomendasikan dari nol jika tidak ada). Untuk setiap elemen (Headline, About), tulis: TEMUAN → ANALISA → DAMPAK → REKOMENDASI dengan contoh konkret SEBELUM/SESUDAH.
+
+---
+
+## LEVEL 2 — Audit CV: Rumus Dampak
+
+### 2.1 — Pola Kalimat & Kata Kerja
+Analisis kata kerja yang digunakan di CV. Identifikasi yang pasif/lemah. Buat tabel 3 pola bermasalah dengan contoh nyata dari CV. Sertakan ASET TERSEMBUNYI yang belum dioptimalkan.
+
+### 2.2 — Metrik & Kuantifikasi
+Evaluasi angka dan metrik di CV. Seberapa lengkap? Mana yang sudah kuat? Mana yang masih bisa diperkuat dengan konteks?
+
+### 2.3 — Struktur & Urutan
+Evaluasi urutan pengalaman dan relevansinya dengan target karir.
+
+### 2.4 — Skills & ATS Optimization
+Evaluasi skills section dan kesesuaiannya dengan ATS.
+
+---
+
+## LEVEL 3 — Strategi Niche & Positioning
+
+### 3.1 — Niche & Positioning
+Berdasarkan CV, tentukan positioning yang paling kuat. Buat intersection antara skill, minat, dan market demand.
+
+### 3.2 — Persona Konten
+Deskripsikan karakter konten yang cocok untuk klien ini di LinkedIn.
+
+### 3.3 — Content Pillar
+Rekomendasikan 3–5 content pillar berdasarkan keahlian nyata di CV.
+
+---
+
+## LEVEL 4 — Audit Profil LinkedIn (Checklist)
+
+Buat checklist komprehensif semua elemen LinkedIn: foto, banner, headline, about, featured, pengalaman, pendidikan, skills, rekomendasi, activity. Status masing-masing.
+
+---
+
+## LEVEL 5 — Metrik & Algoritma
+
+Tabel 5 metrik wajib dipantau + cara kerja algoritma LinkedIn yang relevan.
+
+---
+
+# CONTOH PERBAIKAN KONKRET
+
+## 4A — Kalimat Positioning
+
+Tulis kalimat positioning yang benar-benar personal untuk ${firstName} — sebutkan industri, pengalaman, dan skill spesifik dari CV.
+
+---
+
+## 4B — Headline LinkedIn (3–4 Opsi)
+
+Tulis 3–4 opsi headline LinkedIn yang konkret dan siap pakai, berdasarkan skill dan pengalaman nyata dari CV. Jika ada headline existing, sertakan perbandingan SEBELUM/SESUDAH.
+
+---
+
+## 4C — Draf About LinkedIn
+
+Tulis draf About LinkedIn yang lengkap (400–600 kata) menggunakan struktur WHO → WHAT → WHY → CTA. Sebutkan detail nyata dari CV: perusahaan, angka, pencapaian. Jika ada About existing, sertakan SEBELUM/SESUDAH.
+
+---
+
+## 4D — Penulisan Ulang Poin Pengalaman CV
+
+Ambil 8–12 bullet point nyata dari CV. Untuk setiap poin, tulis SEBELUM dan SESUDAH menggunakan rumus: Kata Kerja Aksi + Objek + Hasil Terukur + Metode/Konteks. Jika bullet sudah kuat (ada angka), tingkatkan dengan menambah konteks atau perkuat kata kerja.
+
+---
+
+## 4E — Draf Konten LinkedIn (Post Lengkap)
+
+Tulis 1 post LinkedIn lengkap (150–250 kata) yang siap publish, berdasarkan pengalaman atau pencapaian nyata dari CV ${firstName}. Bukan template — ini post yang bisa langsung dipakai.
+
+---
+
+## 4F — Bank Ide Hook (15 Hook)
+
+Buat tabel 15 hook LinkedIn yang personal dan relevan dengan industri/pengalaman ${firstName}. Sertakan kolom: No, Hook, Tipe.
+
+---
+
+## 4G — Productizing Skills
+
+Buat tabel bagaimana skill ${firstName} bisa di-productize: jasa freelance, workshop, konten berbayar, dll.
+
+---
+
+## 4H — Script DM & Outreach
+
+Tulis 2–3 script pesan LinkedIn untuk networking/job hunting yang personal untuk ${firstName}.
+
+---
+
+## 4I — Versi Alternatif About (Jalur Karir Berbeda)
+
+Tulis 1 versi alternatif About LinkedIn jika ${firstName} mengejar jalur karir yang berbeda dari jalur utama saat ini.
+
+---
+
+## 4J — Kalender Konten 4 Minggu
+
+Buat tabel kalender konten 4 minggu (2 post/minggu): Minggu, Hari, Tipe Konten, Topik Spesifik, Format, CTA. Topik harus relevan dengan pengalaman nyata ${firstName}.
+
+---
+
+## 4K — Hambatan Mental & Cara Mengatasinya
+
+Identifikasi 3 hambatan mental yang paling relevan untuk profil ${firstName} dan cara mengatasinya secara praktis.
+
+---
+
+# RENCANA EKSEKUSI
+
+## Minggu 1 — Fondasi
+Checklist spesifik 6–8 tugas untuk minggu pertama, berdasarkan temuan di laporan ini.
+
+## Minggu 2–4 — Momentum
+Checklist 5–7 tugas lanjutan.
+
+## Bulan 2–3 — Konsistensi
+Checklist 4–5 tugas untuk fase jangka menengah.
+
+---
+
+# SKOR AKHIR
+
+Buat tabel skor personal branding ${firstName} dengan 6 komponen, skor masing-masing, dan catatan spesifik. Hitung total skor. Tulis interpretasi skor dan target realistis dalam 90 hari.
+
+---
+
+# PENUTUP
+
+Tulis penutup yang personal dan memotivasi, sebutkan hal spesifik dari CV ${firstName}. Maksimal 150 kata.`;
+
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 8000,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const content = message.content[0];
+  if (content.type !== "text") throw new Error("Unexpected response type from Claude");
+  return content.text;
+}
+
 // ── API Handler ───────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -1304,7 +1513,17 @@ export async function POST(request: NextRequest) {
 
     const id = uuidv4();
 
-    const fullContent = generateAnalysis(name, cv_text, linkedin_headline?.trim() || null, linkedin_about?.trim() || null);
+    let fullContent: string;
+    if (process.env.ANTHROPIC_API_KEY) {
+      fullContent = await generateAnalysisWithClaude(
+        name,
+        cv_text,
+        linkedin_headline?.trim() || null,
+        linkedin_about?.trim() || null
+      );
+    } else {
+      fullContent = generateAnalysis(name, cv_text, linkedin_headline?.trim() || null, linkedin_about?.trim() || null);
+    }
 
     const { error: insertError } = await supabaseServer.from("analyses").insert({
       id,
