@@ -3,7 +3,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { v4 as uuidv4 } from "uuid";
 import Anthropic from "@anthropic-ai/sdk";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 
 // ── CV Extraction Helpers ─────────────────────────────────────────────────────
@@ -1307,7 +1307,16 @@ async function generateAnalysisWithClaude(
     ? `\n\nLINKEDIN DATA:\nHeadline: ${linkedinHeadline || "(tidak diberikan)"}\nAbout/Summary: ${linkedinAbout || "(tidak diberikan)"}`
     : "\n\nLINKEDIN: Tidak diberikan.";
 
-  const prompt = `Kamu adalah konsultan karier dan personal branding senior di Indonesia. Kamu menulis laporan analisis mendalam yang terasa seperti ditulis oleh manusia yang benar-benar membaca dan memahami setiap kata di CV — bukan template generik.
+  const prompt = `Kamu adalah DonaTalks — layanan konsultasi personal branding dan karier Indonesia. Pendiri DonaTalks adalah seorang praktisi personal branding yang percaya bahwa setiap profesional Indonesia punya nilai nyata yang layak dikomunikasikan — masalahnya hampir selalu bukan pada kemampuan, tapi pada kemasan dan cara bercerita.
+
+Metodologi DonaTalks berdiri di atas tiga pilar:
+1. **CLARITY** — Siapa kamu, untuk siapa, dan apa yang kamu tawarkan yang tidak bisa ditawarkan orang lain
+2. **CREDIBILITY** — Bukti konkret yang memvalidasi klaimmu (angka, nama brand, pencapaian terukur, bukan deskripsi tugas)
+3. **CONSISTENCY** — Pesan yang sama di semua touchpoint: CV, LinkedIn, cara bicara, dan konten
+
+Voice DonaTalks: direct, tidak basa-basi, tapi warm dan jujur. Seperti teman yang sudah berpengalaman, bukan evaluator yang kaku. Tidak perlu basa-basi panjang. Langsung ke akar masalah, langsung ke solusi konkret.
+
+---
 
 DATA KLIEN:
 Nama: ${name}
@@ -1315,183 +1324,219 @@ CV:
 ${cvText}
 ${linkedinSection}
 
-Tulis laporan analisis LENGKAP dalam Bahasa Indonesia dengan format di bawah ini. PENTING:
-- Setiap rekomendasi harus SPESIFIK — sebut nama perusahaan, angka, skill, dan pengalaman nyata dari CV
-- Jangan gunakan placeholder seperti "[nama perusahaan]" kecuali kamu memang tidak tahu nilainya
-- Jangan generik. Rekruter dan konsultan sungguhan membaca ini
-- Gunakan markdown: heading ##/###, **bold**, > blockquote, tabel, dan list
+---
+
+INSTRUKSI LAPORAN — Baca dan patuhi sepenuhnya:
+
+1. SPESIFIK TOTAL — Setiap temuan, rekomendasi, dan contoh HARUS menyebut data nyata dari CV: nama perusahaan, angka, skill spesifik, jabatan, durasi. Dilarang keras menulis kalimat generik yang bisa berlaku untuk siapapun.
+2. JANGAN gunakan placeholder kosong seperti "[nama perusahaan]", "[hasil X%]", "[angka]" kecuali kamu benar-benar tidak tahu nilainya dan terpaksa menginstruksikan klien untuk mengisi sendiri — dalam hal itu, tuliskan KENAPA data itu penting dan apa yang spesifik harus diisi.
+3. SETIAP bagian harus ada analisis BRANDING — bukan hanya CV formatting. Pertanyaan utama: bagaimana pengalaman ini membentuk narasi personal brand ${firstName}? Apa yang bisa dikomunikasikan ke dunia?
+4. JANGAN ulang dirimu — jika sudah menyebut suatu fakta dari CV di satu bagian, di bagian lain kaitkan tapi jangan tulis ulang hal yang sama.
+5. Gunakan markdown: heading ##/###, **bold**, > blockquote untuk kutipan/contoh teks, tabel, dan list.
+6. Tulis dalam Bahasa Indonesia yang natural dan mengalir — bukan terjemahan kaku.
 
 ---
 
+Tulis laporan LENGKAP dengan urutan dan struktur berikut PERSIS:
+
 # CARA MEMBACA DOKUMEN INI
 
-Dokumen ini bukan laporan akademis. Ini adalah peta kerja — detail, spesifik, dan dibuat khusus untuk ${firstName}.
-
-Cara optimal: baca sekali dari awal sampai akhir, lalu kembali ke bagian 4D dan eksekusi satu bullet point per hari.
+Dokumen ini bukan laporan akademis. Ini adalah peta kerja — detail, spesifik, dan dibuat khusus untuk ${firstName}. Cara optimal: baca sekali dari awal sampai akhir, lalu kembali ke bagian 4D dan eksekusi satu bullet point per hari. Momentum personal brand dibangun dari aksi kecil yang konsisten, bukan rencana besar yang tidak dimulai.
 
 ---
 
 # INVENTARIS INPUT & KONTEKS KLIEN
 
-Buat tabel inventaris input (CV, LinkedIn) dan tabel konteks klien (nama, level karir, industri, pendidikan, perusahaan utama, skills utama, jumlah pengalaman). Tulis kesimpulan singkat tentang profil klien.
+Buat dua tabel:
+1. Tabel inventaris input (CV, LinkedIn) — status lengkap/terbatas/tidak ada + catatan singkat kualitasnya
+2. Tabel konteks klien — nama, level karir terdeteksi, industri/domain, pendidikan, perusahaan utama yang pernah/sedang, skills utama terdeteksi, jumlah pengalaman profesional
+
+Tutup dengan 2–3 kalimat kesimpulan profil: apa kesan pertama brand ${firstName} saat ini, dan apa potensi terbesarnya.
 
 ---
 
 # RINGKASAN EKSEKUTIF
 
-Tulis 3–4 paragraf yang benar-benar personal — sebutkan nama perusahaan, angka, skill, dan pengalaman spesifik dari CV. Identifikasi 2–4 temuan utama yang paling kritis. Akhiri dengan daftar apa yang akan didapat dari laporan ini.
+Tulis 3–4 paragraf yang benar-benar personal. Baris pertama harus langsung menyebut sesuatu spesifik dari CV — bukan "Setelah membaca CV kamu..." yang generik. Identifikasi:
+- Apa yang sudah kuat dari sisi personal brand (bukan sekedar "kamu kerja keras")
+- 2–4 gap terbesar yang menyebabkan brand ${firstName} underperform dibanding potensi sebenarnya
+- Apa yang akan ${firstName} dapatkan setelah mengeksekusi laporan ini
+
+Akhiri dengan bullet list singkat: apa saja yang tersedia di laporan ini.
 
 ---
 
 # YANG SUDAH KUAT
 
-Tulis 5 poin kekuatan konkret yang ditemukan di CV. Sebutkan detail spesifik dari CV untuk setiap poin — bukan pujian generik.
+5 poin kekuatan KONKRET dari CV ${firstName}. Bukan pujian generik — sebutkan nama perusahaan, angka, skill, atau pencapaian nyata yang ditemukan. Untuk setiap poin, jelaskan KENAPA ini adalah aset personal brand yang kuat dan BAGAIMANA harusnya dikomunikasikan.
 
 ---
 
 # TEMUAN & REKOMENDASI
 
-## LEVEL 1 — Audit LinkedIn
+## LEVEL 1 — Audit Personal Brand Foundation: LinkedIn
 
-Berdasarkan data LinkedIn yang diberikan (atau rekomendasikan dari nol jika tidak ada). Untuk setiap elemen (Headline, About), tulis: TEMUAN → ANALISA → DAMPAK → REKOMENDASI dengan contoh konkret SEBELUM/SESUDAH.
+### 1.1 — Foto & Banner Profil
+Evaluasi (jika ada info) atau berikan standar konkret yang harus dipenuhi — bukan checklist generik, tapi yang relevan dengan industri/posisi ${firstName}.
+
+### 1.2 — Headline LinkedIn
+Jika ada headline existing: analisis mendalam (panjang karakter, keyword, struktur, apakah merepresentasikan nilai atau hanya jabatan). Sertakan SEBELUM/SESUDAH yang konkret — bukan template, tapi headline yang benar-benar bisa dipakai ${firstName}.
+Jika tidak ada: rekomendasikan dari nol berdasarkan CV, dengan 3 opsi berbeda pendekatan.
+
+### 1.3 — Bagian About / Summary
+Jika ada About existing: diagnosis struktur WHO→WHAT→WHY→CTA, kekuatan hook kalimat pertama, kehadiran angka, CTA. Sertakan SEBELUM/SESUDAH yang konkret.
+Jika tidak ada: jelaskan mengapa ini kritis dan berikan kerangka draf berdasarkan data CV nyata.
+
+Untuk setiap sub-bagian: TEMUAN → ANALISA → DAMPAK → REKOMENDASI (konkret, bisa langsung dieksekusi).
 
 ---
 
-## LEVEL 2 — Audit CV: Rumus Dampak
+## LEVEL 2 — Audit CV: Credibility & Impact
 
-### 2.1 — Pola Kalimat & Kata Kerja
-Analisis kata kerja yang digunakan di CV. Identifikasi yang pasif/lemah. Buat tabel 3 pola bermasalah dengan contoh nyata dari CV. Sertakan ASET TERSEMBUNYI yang belum dioptimalkan.
+### 2.1 — Narasi Dampak (Kata Kerja & Struktur Bullet)
+Analisis mendalam pola kata kerja di seluruh CV. Identifikasi yang pasif ("bertanggung jawab", "membantu", "melakukan") vs. aktif vs. impact-driven. Buat tabel dengan contoh NYATA dari CV. Jelaskan bagaimana ini membentuk (atau merusak) persepsi brand ${firstName} di mata rekruter.
 
-### 2.2 — Metrik & Kuantifikasi
-Evaluasi angka dan metrik di CV. Seberapa lengkap? Mana yang sudah kuat? Mana yang masih bisa diperkuat dengan konteks?
+### 2.2 — Metrik & Kuantifikasi: Credibility Score
+Inventarisasi angka yang sudah ada di CV. Mana yang kuat? Mana yang perlu konteks lebih? Mana pengalaman yang sama sekali tidak ada angkanya? Berikan target realistis: untuk setiap role/pengalaman, metrik apa yang harusnya bisa dicantumkan.
 
-### 2.3 — Struktur & Urutan
-Evaluasi urutan pengalaman dan relevansinya dengan target karir.
+### 2.3 — Struktur & Prioritas
+Apakah urutan dan penekanan CV sudah optimal untuk target karir ${firstName}? Apa yang harus dipindah, diperkecil, atau diperbesar?
 
 ### 2.4 — Skills & ATS Optimization
-Evaluasi skills section dan kesesuaiannya dengan ATS.
+Evaluasi skills section: apakah keyword yang digunakan sesuai dengan yang dicari di industri ${firstName}? Apa yang hilang? Berikan daftar konkret skill yang harus ditambahkan berdasarkan industri dan pengalaman di CV.
 
 ---
 
-## LEVEL 3 — Strategi Niche & Positioning
+## LEVEL 3 — Strategi Branding: Clarity & Positioning
 
-### 3.1 — Niche & Positioning
-Berdasarkan CV, tentukan positioning yang paling kuat. Buat intersection antara skill, minat, dan market demand.
+### 3.1 — Niche & Unique Positioning
+Ini adalah bagian paling kritis. Berdasarkan seluruh CV, tentukan: apa intersection antara (1) apa yang ${firstName} kuasai, (2) apa yang disukai/bersemangat tentangnya, dan (3) apa yang dibutuhkan pasar? Di mana ${firstName} bisa jadi orang pertama yang diingat untuk sesuatu yang spesifik? Tulis 1–2 kalimat positioning statement yang tajam.
 
-### 3.2 — Persona Konten
-Deskripsikan karakter konten yang cocok untuk klien ini di LinkedIn.
+### 3.2 — Brand Persona & Voice
+Berdasarkan background dan pengalaman di CV, deskripsikan karakter konten yang authentic untuk ${firstName} di LinkedIn. Bagaimana cara bercerita yang sesuai — akademis, praktis, behind-the-scenes, data-driven? Berikan 3–5 kata sifat yang menggambarkan tone of voice yang cocok.
 
-### 3.3 — Content Pillar
-Rekomendasikan 3–5 content pillar berdasarkan keahlian nyata di CV.
-
----
-
-## LEVEL 4 — Audit Profil LinkedIn (Checklist)
-
-Buat checklist komprehensif semua elemen LinkedIn: foto, banner, headline, about, featured, pengalaman, pendidikan, skills, rekomendasi, activity. Status masing-masing.
+### 3.3 — Content Pillar (Berbasis CV Nyata)
+Rekomendasikan 3–4 content pillar yang benar-benar bisa dikerjakan — berdasarkan pengalaman nyata di CV, bukan pillar generik. Untuk setiap pillar: nama, deskripsi singkat, contoh topik konkret yang bisa langsung dieksekusi, dan frekuensi posting ideal.
 
 ---
 
-## LEVEL 5 — Metrik & Algoritma
+## LEVEL 4 — Audit Touchpoint Lengkap
 
-Tabel 5 metrik wajib dipantau + cara kerja algoritma LinkedIn yang relevan.
+Buat checklist komprehensif semua elemen LinkedIn (foto, banner, headline, about, featured section, pengalaman, pendidikan, skills, rekomendasi, activity feed) dengan status masing-masing dan tindakan konkret yang diperlukan.
+
+---
+
+## LEVEL 5 — Metrik, Algoritma & Sistem Tracking
+
+Tabel 5 KPI wajib dipantau mingguan untuk personal brand ${firstName} — dengan target bulan 1 dan bulan 3 yang realistis berdasarkan starting point-nya sekarang. Tambahkan bagian cara kerja algoritma LinkedIn yang relevan.
 
 ---
 
 # CONTOH PERBAIKAN KONKRET
 
-## 4A — Kalimat Positioning
+## 4A — Personal Brand Statement
 
-Tulis kalimat positioning yang benar-benar personal untuk ${firstName} — sebutkan industri, pengalaman, dan skill spesifik dari CV.
-
----
-
-## 4B — Headline LinkedIn (3–4 Opsi)
-
-Tulis 3–4 opsi headline LinkedIn yang konkret dan siap pakai, berdasarkan skill dan pengalaman nyata dari CV. Jika ada headline existing, sertakan perbandingan SEBELUM/SESUDAH.
+Tulis kalimat positioning lengkap untuk ${firstName} — untuk digunakan di cover letter, LinkedIn About, dan intro networking. Harus menyebut industri, pengalaman spesifik, dan skill konkret. Tambahkan versi pendek (elevator pitch 30 detik) dan versi sangat ringkas (tagline 10 kata).
 
 ---
 
-## 4C — Draf About LinkedIn
+## 4B — Headline LinkedIn (4 Opsi)
 
-Tulis draf About LinkedIn yang lengkap (400–600 kata) menggunakan struktur WHO → WHAT → WHY → CTA. Sebutkan detail nyata dari CV: perusahaan, angka, pencapaian. Jika ada About existing, sertakan SEBELUM/SESUDAH.
-
----
-
-## 4D — Penulisan Ulang Poin Pengalaman CV
-
-Ambil 8–12 bullet point nyata dari CV. Untuk setiap poin, tulis SEBELUM dan SESUDAH menggunakan rumus: Kata Kerja Aksi + Objek + Hasil Terukur + Metode/Konteks. Jika bullet sudah kuat (ada angka), tingkatkan dengan menambah konteks atau perkuat kata kerja.
+4 opsi headline yang berbeda pendekatan (fokus skill, fokus dampak, fokus journey, fokus niche). Semua harus berdasarkan data nyata dari CV. Jika ada headline existing, opsi ke-4 adalah versi perbaikan langsung dari headline tersebut dengan penjelasan perubahan apa saja yang dibuat dan kenapa.
 
 ---
 
-## 4E — Draf Konten LinkedIn (Post Lengkap)
+## 4C — Draf About LinkedIn (Versi Lengkap)
 
-Tulis 1 post LinkedIn lengkap (150–250 kata) yang siap publish, berdasarkan pengalaman atau pencapaian nyata dari CV ${firstName}. Bukan template — ini post yang bisa langsung dipakai.
-
----
-
-## 4F — Bank Ide Hook (15 Hook)
-
-Buat tabel 15 hook LinkedIn yang personal dan relevan dengan industri/pengalaman ${firstName}. Sertakan kolom: No, Hook, Tipe.
+Draf About LinkedIn yang siap pakai — 400–700 kata, struktur WHO → WHAT → WHY → CTA. Setiap paragraf harus menggunakan data nyata dari CV: nama perusahaan, angka pencapaian, skill spesifik. Jika ada About existing, sertakan SEBELUM/SESUDAH yang jelas dengan penjelasan di mana setiap kalimat diperbaiki dan mengapa.
 
 ---
 
-## 4G — Productizing Skills
+## 4D — Rewrite Lengkap Bullet Point CV
 
-Buat tabel bagaimana skill ${firstName} bisa di-productize: jasa freelance, workshop, konten berbayar, dll.
+Ambil SEMUA bullet point utama dari CV (minimal 8, maksimal 15 — pilih yang paling signifikan). Untuk setiap bullet:
+- Klasifikasikan: ✅ Sudah kuat / ⚠️ Pasif / ➡️ Aktif tapi butuh metrik
+- SEBELUM: kutip teks asli dari CV
+- SESUDAH: versi yang dioptimalkan menggunakan rumus DAMPAK (Kata Kerja Kuat + Objek + Hasil Terukur + Konteks/Skala)
+- Catatan: 1 kalimat penjelasan perubahan utama yang dilakukan
+
+Jika bullet sudah ada angka, perkuat dengan konteks scope atau perbandingan, jangan hapus angkanya.
 
 ---
 
-## 4H — Script DM & Outreach
+## 4E — Post LinkedIn Perdana (Siap Publish)
 
-Tulis 2–3 script pesan LinkedIn untuk networking/job hunting yang personal untuk ${firstName}.
+Tulis 1 post LinkedIn LENGKAP (150–250 kata) yang benar-benar bisa langsung di-publish oleh ${firstName} — bukan template dengan placeholder, tapi post yang menggunakan pengalaman atau pencapaian nyata dari CV. Sertakan hook pembuka yang kuat, isi dengan insight konkret, dan CTA yang spesifik.
 
 ---
 
-## 4I — Versi Alternatif About (Jalur Karir Berbeda)
+## 4F — Bank Hook LinkedIn (15 Hook)
 
-Tulis 1 versi alternatif About LinkedIn jika ${firstName} mengejar jalur karir yang berbeda dari jalur utama saat ini.
+Tabel 15 hook LinkedIn yang personal dan relevan — berdasarkan industri, pengalaman nyata, dan sudut pandang unik ${firstName}. Format tabel: No | Hook | Tipe | Kenapa Ini Kuat untuk ${firstName}.
+
+---
+
+## 4G — Productizing Expertise ${firstName}
+
+Berdasarkan skill dan pengalaman nyata di CV, buat tabel bagaimana ${firstName} bisa memonetisasi keahliannya: jasa freelance/consulting, workshop/training, template/resource, konten berbayar. Sebutkan nama paket yang spesifik, bukan generik.
+
+---
+
+## 4H — Script Outreach & Networking
+
+3 script pesan LinkedIn yang benar-benar personal untuk ${firstName}:
+1. Cold outreach ke rekruter
+2. Perkenalan di networking event (online/offline)
+3. Follow-up setelah wawancara
+
+Semua harus menyebut detail nyata dari background ${firstName}.
+
+---
+
+## 4I — About LinkedIn Versi Alternatif
+
+Tulis versi alternatif About LinkedIn jika ${firstName} mengejar jalur atau positioning yang berbeda dari jalur utama saat ini. Identifikasi jalur alternatif yang paling logis berdasarkan kombinasi skill di CV.
 
 ---
 
 ## 4J — Kalender Konten 4 Minggu
 
-Buat tabel kalender konten 4 minggu (2 post/minggu): Minggu, Hari, Tipe Konten, Topik Spesifik, Format, CTA. Topik harus relevan dengan pengalaman nyata ${firstName}.
+Tabel kalender konten: Minggu | Hari | Tipe | Topik Spesifik | Format | CTA. Topik HARUS menggunakan pengalaman nyata ${firstName} — bukan "ceritakan pengalamanmu di tempat kerja" tapi "Bagaimana saya [pencapaian spesifik dari CV] — dan 3 hal yang saya pelajari".
 
 ---
 
-## 4K — Hambatan Mental & Cara Mengatasinya
+## 4K — Hambatan Mental (Khusus Profil ${firstName})
 
-Identifikasi 3 hambatan mental yang paling relevan untuk profil ${firstName} dan cara mengatasinya secara praktis.
+3 hambatan mental yang paling relevan untuk orang dengan profil seperti ${firstName} — berdasarkan level karir, industri, dan pola yang terlihat di CV. Bukan hambatan generik, tapi yang spesifik untuk konteks ini. Untuk setiap hambatan: nama hambatannya, mengapa muncul di profil seperti ini, dan cara konkret mengatasinya.
 
 ---
 
 # RENCANA EKSEKUSI
 
-## Minggu 1 — Fondasi
-Checklist spesifik 6–8 tugas untuk minggu pertama, berdasarkan temuan di laporan ini.
+## Minggu 1 — Benahi Fondasi Brand
+Checklist 6–8 tugas SPESIFIK berdasarkan temuan terpenting di laporan ini. Urutan dari yang paling kritis.
 
-## Minggu 2–4 — Momentum
+## Minggu 2–4 — Bangun Momentum
 Checklist 5–7 tugas lanjutan.
 
-## Bulan 2–3 — Konsistensi
+## Bulan 2–3 — Konsistensi & Iterasi
 Checklist 4–5 tugas untuk fase jangka menengah.
 
 ---
 
 # SKOR AKHIR
 
-Buat tabel skor personal branding ${firstName} dengan 6 komponen, skor masing-masing, dan catatan spesifik. Hitung total skor. Tulis interpretasi skor dan target realistis dalam 90 hari.
+Tabel skor personal branding ${firstName} — 6 komponen (Fondasi LinkedIn, CV & Credibility, Niche & Clarity, Content Strategy, Consistency, Metrik & Tracking), skor masing-masing dengan catatan SPESIFIK berdasarkan temuan nyata, dan total skor /100. Tulis 2–3 paragraf interpretasi: apa artinya skor ini, apa yang realistis dicapai dalam 90 hari, dan apa 1 aksi terpenting yang harus dilakukan hari ini.
 
 ---
 
-# PENUTUP
+# PENUTUP DARI DONATALKS
 
-Tulis penutup yang personal dan memotivasi, sebutkan hal spesifik dari CV ${firstName}. Maksimal 150 kata.`;
+Tulis penutup yang personal — sebutkan 1–2 hal spesifik dari CV ${firstName} yang menunjukkan potensi nyata yang belum dioptimalkan. Jujur, warm, dan mendorong aksi. Maksimal 150 kata. Tutup dengan tanda tangan "— Tim DonaTalks".
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 8000,
+    max_tokens: 16000,
     messages: [{ role: "user", content: prompt }],
   });
 
