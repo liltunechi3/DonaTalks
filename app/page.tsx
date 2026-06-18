@@ -164,7 +164,7 @@ export default function Home() {
               bukan template generik.
             </p>
             <p style={{ color: `rgba(245,240,232,0.35)`, fontSize: "0.85rem", lineHeight: 1.6, maxWidth: 440 }}>
-              Preview gratis. Laporan penuh Rp 10.000 — bayar hanya jika ingin membuka seluruh isi.
+              Gratis sepenuhnya. Laporan lengkap dan detail langsung tersedia.
             </p>
           </div>
         </div>
@@ -345,7 +345,7 @@ export default function Home() {
                 </button>
 
                 <p style={{ fontSize: "0.75rem", textAlign: "center", color: `rgba(30,56,50,0.35)` }}>
-                  Preview gratis. Analisa penuh Rp 10.000 — bayar hanya kalau mau buka semua.
+                  Gratis. Laporan lengkap siap dalam beberapa detik.
                 </p>
               </form>
             </div>
@@ -407,13 +407,13 @@ export default function Home() {
               },
               {
                 step: "02",
-                title: "Terima Laporan Gratis",
-                desc: "Dalam hitungan detik, baca Ringkasan Eksekutif dan Konteks Klien. Gratis, tanpa perlu daftar.",
+                title: "Terima Laporan Lengkap",
+                desc: "Dalam hitungan detik, laporan penuh langsung tersedia — audit CV, rewrite siap pakai, 30 ide konten, rencana eksekusi.",
               },
               {
                 step: "03",
-                title: "Buka Analisa Penuh",
-                desc: "Bayar Rp 10.000 sekali untuk akses semua: audit CV, rewrite siap pakai, 30 ide konten, rencana eksekusi.",
+                title: "Eksekusi",
+                desc: "Gunakan rekomendasi konkret untuk perbaiki CV dan bangun personal brand-mu. Semua instruksi siap, tinggal jalan.",
               },
             ].map((s) => (
               <div key={s.step} style={{ borderTop: `1px solid rgba(245,240,232,0.12)`, paddingTop: 20 }}>

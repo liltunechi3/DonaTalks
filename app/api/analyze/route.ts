@@ -1306,21 +1306,12 @@ export async function POST(request: NextRequest) {
 
     const fullContent = generateAnalysis(name, cv_text, linkedin_headline?.trim() || null, linkedin_about?.trim() || null);
 
-    // Preview = first ~50% of the document, cut at a clean section boundary
-    const midpoint = Math.floor(fullContent.length / 2);
-    let breakPoint = fullContent.indexOf("\n---\n", midpoint);
-    if (breakPoint === -1) breakPoint = fullContent.lastIndexOf("\n## ", midpoint + 2000);
-    if (breakPoint === -1) breakPoint = midpoint;
-    const previewContent =
-      fullContent.substring(0, breakPoint) +
-      "\n\n---\n\n> 🔒 **Lanjutan laporan tersedia setelah aktivasi** — termasuk: rewrite setiap poin CV (4D), 3 opsi headline LinkedIn (4B), draf About lengkap (4C), 15 hook konten (4F), kalender konten 4 minggu (4J), tabel Skor Akhir, dan Rencana Eksekusi lengkap.";
-
     const { error: insertError } = await supabaseServer.from("analyses").insert({
       id,
       cv_text,
       session_id: session_id || uuidv4(),
-      is_paid: false,
-      preview_content: previewContent.trim(),
+      is_paid: true,
+      preview_content: fullContent,
       full_content: fullContent,
     });
 
