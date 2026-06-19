@@ -14,6 +14,7 @@ const NAV = [
   { href: '/kpr/dashboard', label: 'Dashboard', icon: '📊' },
   { href: '/kpr/nasabah', label: 'Data Nasabah', icon: '👤' },
   { href: '/kpr/nasabah/baru', label: '+ Nasabah Baru', icon: null },
+  { href: '/kpr/admin', label: 'Manajemen User', icon: '🔐' },
 ]
 
 export default function KprLayout({ children }: { children: React.ReactNode }) {
