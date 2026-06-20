@@ -201,9 +201,12 @@ export default function ManagementDashboard() {
           <Link href="/" style={{ textDecoration: "none" }}>
             <span style={{ color: "#F5F0E8", fontWeight: 700, fontSize: "1rem", letterSpacing: "0.04em" }}>DonaTalks</span>
           </Link>
-          <span style={{ fontSize: "0.75rem", fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(245,240,232,0.5)" }}>
-            Management
-          </span>
+          <button
+            onClick={async () => { await fetch("/api/management/auth", { method: "DELETE" }); window.location.href = "/management/login"; }}
+            style={{ background: "none", border: "1px solid rgba(245,240,232,0.2)", borderRadius: 6, padding: "4px 12px", color: "rgba(245,240,232,0.5)", fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}
+          >
+            Keluar
+          </button>
         </div>
       </header>
 

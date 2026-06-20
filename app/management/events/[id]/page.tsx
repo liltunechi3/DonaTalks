@@ -494,8 +494,14 @@ export default function EventDetailPage() {
         <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px", height: 52, display: "flex", alignItems: "center", gap: 14 }}>
           <Link href="/management" style={{ textDecoration: "none", color: "rgba(245,240,232,0.5)", fontSize: "0.8rem" }}>← Dashboard</Link>
           <span style={{ color: "rgba(245,240,232,0.2)" }}>|</span>
-          <span style={{ color: C, fontWeight: 600, fontSize: "0.88rem" }}>{event.name}</span>
+          <span style={{ color: C, fontWeight: 600, fontSize: "0.88rem", flex: 1 }}>{event.name}</span>
           <span style={{ ...evStatus, fontSize: "0.7rem", fontWeight: 600, padding: "2px 8px", borderRadius: 4 }}>{evStatus.label}</span>
+          <button
+            onClick={async () => { await fetch("/api/management/auth", { method: "DELETE" }); window.location.href = "/management/login"; }}
+            style={{ background: "none", border: "1px solid rgba(245,240,232,0.2)", borderRadius: 6, padding: "4px 12px", color: "rgba(245,240,232,0.5)", fontSize: "0.75rem", cursor: "pointer", fontWeight: 500 }}
+          >
+            Keluar
+          </button>
         </div>
       </header>
 
