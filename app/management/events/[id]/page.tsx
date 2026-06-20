@@ -54,6 +54,46 @@ interface Evaluation {
   created_at: string;
 }
 
+// ── Template jobdesk per divisi ────────────────────────────────────────────────
+
+const TASK_TEMPLATES: Record<string, { title: string; notes?: string }[]> = {
+  acara: [
+    { title: "Briefing narasumber", notes: "Kirim rundown & brief materi H-3" },
+    { title: "Susun rundown acara" },
+    { title: "Koordinasi dengan MC" },
+    { title: "Technical check (sound, slide, platform)" },
+    { title: "Registrasi & check-in peserta" },
+    { title: "Dokumentasi foto/video" },
+    { title: "Distribusi sertifikat peserta" },
+    { title: "Buat laporan kegiatan post-event" },
+    { title: "Evaluasi internal post-event" },
+    { title: "Gladi bersih / rehearsal" },
+    { title: "Koordinasi venue / platform Zoom", notes: "Cek kapasitas & fitur" },
+  ],
+  marketing: [
+    { title: "Buat copy caption IG" },
+    { title: "Distribusi info event ke komunitas/grup" },
+    { title: "Follow up calon peserta", notes: "DM atau WA blast" },
+    { title: "Live report di story IG saat acara" },
+    { title: "Repost story peserta" },
+    { title: "Buat konten recap post-event" },
+    { title: "Kirim email newsletter / WA blast" },
+    { title: "Publish event di linktree / bio IG" },
+    { title: "Tracking insight & engagement IG" },
+  ],
+  design: [
+    { title: "Desain poster utama" },
+    { title: "Desain story Instagram (1:1 & 9:16)" },
+    { title: "Desain template sertifikat" },
+    { title: "Desain rundown visual" },
+    { title: "Desain banner / backdrop (offline)" },
+    { title: "Desain twibbon peserta" },
+    { title: "Desain deck slide presenter" },
+    { title: "Desain highlight cover IG" },
+    { title: "Desain quote card post-event" },
+  ],
+};
+
 // ── Shared styles ──────────────────────────────────────────────────────────────
 
 const inp: React.CSSProperties = {
@@ -132,6 +172,8 @@ function avg(evals: Evaluation[], field: keyof Evaluation): string {
   return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
 }
 
+const emptyTf = { title: "", category: "acara", pic: "", deadline: "", status: "todo", notes: "", link: "" };
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function EventDetailPage() {
@@ -155,10 +197,16 @@ export default function EventDetailPage() {
   const [teamForm, setTeamForm] = useState({ member_name: "", role: "acara" });
   const [savingTeam, setSavingTeam] = useState(false);
 
-  // Task modal
+  // Task modal — create & edit
   const [showTaskModal, setShowTaskModal] = useState(false);
-  const [tf, setTf] = useState({ title: "", category: "acara", pic: "", deadline: "", status: "todo", notes: "", link: "" });
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [tf, setTf] = useState(emptyTf);
   const [savingTask, setSavingTask] = useState(false);
+
+  // Template modal
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateSelections, setTemplateSelections] = useState<Record<string, boolean>>({});
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
 
   // Eval modal
   const [showEvalModal, setShowEvalModal] = useState(false);
@@ -185,6 +233,27 @@ export default function EventDetailPage() {
   }, [id, router]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Open task modal helpers
+  function openCreateTask() {
+    setEditingTask(null);
+    setTf(emptyTf);
+    setShowTaskModal(true);
+  }
+
+  function openEditTask(task: Task) {
+    setEditingTask(task);
+    setTf({
+      title: task.title,
+      category: task.category,
+      pic: task.pic || "",
+      deadline: task.deadline || "",
+      status: task.status,
+      notes: task.notes || "",
+      link: task.link || "",
+    });
+    setShowTaskModal(true);
+  }
 
   // ── Event save ─────────────────────────────────────────────────────────────
 
@@ -235,19 +304,43 @@ export default function EventDetailPage() {
 
   // ── Tasks ──────────────────────────────────────────────────────────────────
 
-  async function createTask(e: React.FormEvent) {
+  async function submitTask(e: React.FormEvent) {
     e.preventDefault();
     setSavingTask(true);
-    const res = await fetch("/api/management/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...tf, event_id: id, pic: tf.pic || null, deadline: tf.deadline || null, notes: tf.notes || null, link: tf.link || null }),
-    });
-    if (res.ok) {
-      const newTask = await res.json();
-      setTasks((prev) => [...prev, newTask]);
+    const body = {
+      ...tf,
+      pic: tf.pic || null,
+      deadline: tf.deadline || null,
+      notes: tf.notes || null,
+      link: tf.link || null,
+    };
+
+    if (editingTask) {
+      // Edit mode
+      const res = await fetch(`/api/management/tasks/${editingTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setTasks((prev) => prev.map((t) => t.id === editingTask.id ? updated : t));
+      }
+    } else {
+      // Create mode
+      const res = await fetch("/api/management/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, event_id: id }),
+      });
+      if (res.ok) {
+        const newTask = await res.json();
+        setTasks((prev) => [...prev, newTask]);
+      }
     }
-    setTf({ title: "", category: "acara", pic: "", deadline: "", status: "todo", notes: "", link: "" });
+
+    setTf(emptyTf);
+    setEditingTask(null);
     setShowTaskModal(false);
     setSavingTask(false);
   }
@@ -265,6 +358,70 @@ export default function EventDetailPage() {
   async function deleteTask(tid: string) {
     await fetch(`/api/management/tasks/${tid}`, { method: "DELETE" });
     setTasks((prev) => prev.filter((t) => t.id !== tid));
+  }
+
+  async function copyTask(task: Task) {
+    const res = await fetch("/api/management/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event_id: id,
+        title: `${task.title} (Copy)`,
+        category: task.category,
+        pic: task.pic,
+        deadline: task.deadline,
+        status: "todo",
+        notes: task.notes,
+        link: task.link,
+      }),
+    });
+    if (res.ok) {
+      const newTask = await res.json();
+      setTasks((prev) => [...prev, newTask]);
+    }
+  }
+
+  // ── Templates ──────────────────────────────────────────────────────────────
+
+  function openTemplateModal() {
+    // Pre-check tasks not already in list
+    const existing = new Set(tasks.map((t) => t.title.toLowerCase()));
+    const initial: Record<string, boolean> = {};
+    for (const [cat, items] of Object.entries(TASK_TEMPLATES)) {
+      for (const item of items) {
+        const key = `${cat}::${item.title}`;
+        initial[key] = !existing.has(item.title.toLowerCase());
+      }
+    }
+    setTemplateSelections(initial);
+    setShowTemplateModal(true);
+  }
+
+  async function loadTemplates() {
+    const toAdd: { title: string; category: string; notes?: string }[] = [];
+    for (const [cat, items] of Object.entries(TASK_TEMPLATES)) {
+      for (const item of items) {
+        const key = `${cat}::${item.title}`;
+        if (templateSelections[key]) {
+          toAdd.push({ title: item.title, category: cat, notes: item.notes });
+        }
+      }
+    }
+    if (!toAdd.length) { setShowTemplateModal(false); return; }
+
+    setLoadingTemplates(true);
+    const created = await Promise.all(
+      toAdd.map((t) =>
+        fetch("/api/management/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event_id: id, ...t, status: "todo", pic: null, deadline: null, link: null }),
+        }).then((r) => r.ok ? r.json() : null)
+      )
+    );
+    setTasks((prev) => [...prev, ...created.filter(Boolean)]);
+    setLoadingTemplates(false);
+    setShowTemplateModal(false);
   }
 
   // ── Evaluations ────────────────────────────────────────────────────────────
@@ -315,9 +472,7 @@ export default function EventDetailPage() {
   const doneTasks = tasks.filter((t) => t.status === "done").length;
   const taskPct = tasks.length > 0 ? Math.round((doneTasks / tasks.length) * 100) : 0;
 
-  // Eval stats
-  const interested = evaluations.filter((e) => e.interested_next === "ya").length;
-  const maybe = evaluations.filter((e) => e.interested_next === "mungkin").length;
+  const selectedCount = Object.values(templateSelections).filter(Boolean).length;
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: C }}>
@@ -370,8 +525,6 @@ export default function EventDetailPage() {
         {/* ── RANCANGAN TAB ── */}
         {tab === "rancangan" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-            {/* Event detail card */}
             <div style={{ backgroundColor: "#fff", border: "1px solid rgba(30,56,50,0.1)", borderRadius: 10, padding: 24 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <h2 style={{ fontSize: "0.95rem", fontWeight: 700, color: G }}>Detail Event</h2>
@@ -530,32 +683,44 @@ export default function EventDetailPage() {
               </div>
             )}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-              <button onClick={() => setShowTaskModal(true)} style={btnP}>+ Tambah Jobdesk</button>
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginBottom: 16 }}>
+              <button onClick={openTemplateModal} style={btnS}>Template Divisi</button>
+              <button onClick={openCreateTask} style={btnP}>+ Tambah Jobdesk</button>
             </div>
 
             {tasks.length === 0 ? (
-              <div style={{ textAlign: "center", color: "rgba(30,56,50,0.35)", padding: "48px 0", fontSize: "0.9rem" }}>Belum ada jobdesk.</div>
+              <div style={{ textAlign: "center", color: "rgba(30,56,50,0.35)", padding: "48px 0", fontSize: "0.9rem" }}>
+                <div style={{ marginBottom: 12 }}>Belum ada jobdesk.</div>
+                <button onClick={openTemplateModal} style={{ ...btnS, fontSize: "0.85rem" }}>Muat Template Divisi</button>
+              </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                 {TASK_CATEGORIES.map((cat) => {
                   const catTasks = tasksByCategory[cat];
                   if (!catTasks.length) return null;
+                  const catDone = catTasks.filter((t) => t.status === "done").length;
                   return (
                     <div key={cat}>
-                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "rgba(30,56,50,0.4)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
-                        {CATEGORY_LABELS[cat]}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "rgba(30,56,50,0.4)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                          {CATEGORY_LABELS[cat]}
+                        </div>
+                        <span style={{ fontSize: "0.7rem", color: "rgba(30,56,50,0.35)" }}>{catDone}/{catTasks.length}</span>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                         {catTasks.map((task) => {
                           const st = STATUS_BADGE[task.status] || STATUS_BADGE.todo;
                           const isDone = task.status === "done";
                           return (
-                            <div key={task.id} style={{ backgroundColor: "#fff", border: "1px solid rgba(30,56,50,0.1)", borderRadius: 8, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-                              {/* Status cycle button */}
+                            <div
+                              key={task.id}
+                              style={{ backgroundColor: "#fff", border: "1px solid rgba(30,56,50,0.1)", borderRadius: 8, padding: "11px 14px", display: "flex", alignItems: "center", gap: 10 }}
+                            >
+                              {/* Status cycle */}
                               <button
                                 onClick={() => cycleTaskStatus(task)}
-                                title={`Status: ${st.label} — klik untuk ganti`}
+                                title={`${st.label} — klik ganti`}
                                 style={{
                                   width: 22, height: 22, borderRadius: 6, flexShrink: 0, cursor: "pointer",
                                   border: `2px solid ${isDone ? "#059669" : task.status === "in_progress" ? "#3b82f6" : "rgba(30,56,50,0.25)"}`,
@@ -570,25 +735,44 @@ export default function EventDetailPage() {
                                 )}
                               </button>
 
+                              {/* Title + notes */}
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <span style={{ fontSize: "0.87rem", color: G, fontWeight: 500, textDecoration: isDone ? "line-through" : "none", opacity: isDone ? 0.45 : 1 }}>
                                   {task.title}
                                 </span>
-                                {task.notes && <p style={{ fontSize: "0.74rem", color: "rgba(30,56,50,0.5)", margin: "2px 0 0" }}>{task.notes}</p>}
+                                {task.notes && <p style={{ fontSize: "0.73rem", color: "rgba(30,56,50,0.45)", margin: "2px 0 0" }}>{task.notes}</p>}
                               </div>
 
-                              <div style={{ display: "flex", gap: 7, alignItems: "center", flexShrink: 0, flexWrap: "wrap" }}>
+                              {/* Meta + actions */}
+                              <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, flexWrap: "wrap" }}>
                                 {task.pic && (
-                                  <span style={{ fontSize: "0.71rem", backgroundColor: C, color: G, padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>{task.pic}</span>
+                                  <span style={{ fontSize: "0.7rem", backgroundColor: C, color: G, padding: "2px 7px", borderRadius: 4, fontWeight: 600 }}>{task.pic}</span>
                                 )}
                                 {task.deadline && (
-                                  <span style={{ fontSize: "0.71rem", color: "rgba(30,56,50,0.45)" }}>
+                                  <span style={{ fontSize: "0.7rem", color: "rgba(30,56,50,0.45)" }}>
                                     {new Date(task.deadline).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
                                   </span>
                                 )}
-                                <span style={{ ...st, fontSize: "0.69rem", fontWeight: 600, padding: "2px 7px", borderRadius: 4 }}>{st.label}</span>
-                                {task.link && <a href={task.link} target="_blank" rel="noreferrer" style={{ fontSize: "0.71rem", color: G, textDecoration: "underline" }}>link</a>}
-                                <button onClick={() => deleteTask(task.id)} style={{ background: "none", border: "none", color: "rgba(30,56,50,0.25)", cursor: "pointer", fontSize: "1rem", lineHeight: 1 }}>×</button>
+                                <span style={{ ...st, fontSize: "0.68rem", fontWeight: 600, padding: "2px 6px", borderRadius: 4 }}>{st.label}</span>
+                                {task.link && <a href={task.link} target="_blank" rel="noreferrer" style={{ fontSize: "0.7rem", color: G, textDecoration: "underline" }}>link</a>}
+                                {/* Edit */}
+                                <button
+                                  onClick={() => openEditTask(task)}
+                                  title="Edit"
+                                  style={{ background: "none", border: "none", color: "rgba(30,56,50,0.35)", cursor: "pointer", fontSize: "0.85rem", lineHeight: 1, padding: "2px 3px" }}
+                                >✎</button>
+                                {/* Copy */}
+                                <button
+                                  onClick={() => copyTask(task)}
+                                  title="Duplikat"
+                                  style={{ background: "none", border: "none", color: "rgba(30,56,50,0.35)", cursor: "pointer", fontSize: "0.85rem", lineHeight: 1, padding: "2px 3px" }}
+                                >⧉</button>
+                                {/* Delete */}
+                                <button
+                                  onClick={() => deleteTask(task.id)}
+                                  title="Hapus"
+                                  style={{ background: "none", border: "none", color: "rgba(30,56,50,0.22)", cursor: "pointer", fontSize: "1rem", lineHeight: 1, padding: "2px 3px" }}
+                                >×</button>
                               </div>
                             </div>
                           );
@@ -605,7 +789,6 @@ export default function EventDetailPage() {
         {/* ── EVALUASI TAB ── */}
         {tab === "evaluasi" && (
           <div>
-            {/* Summary stats */}
             {evaluations.length > 0 && (
               <div style={{ backgroundColor: "#fff", border: "1px solid rgba(30,56,50,0.1)", borderRadius: 10, padding: 24, marginBottom: 20 }}>
                 <h3 style={{ fontSize: "0.88rem", fontWeight: 700, color: G, marginBottom: 16 }}>Ringkasan — {evaluations.length} Responden</h3>
@@ -630,8 +813,6 @@ export default function EventDetailPage() {
                     );
                   })}
                 </div>
-
-                {/* Interested next */}
                 <div style={{ borderTop: "1px solid rgba(30,56,50,0.08)", paddingTop: 16 }}>
                   <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "rgba(30,56,50,0.4)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Tertarik ikut event selanjutnya?</div>
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -724,13 +905,15 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      {/* ── TASK MODAL ── */}
+      {/* ── TASK MODAL (create & edit) ── */}
       {showTaskModal && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowTaskModal(false); }}>
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowTaskModal(false); setEditingTask(null); } }}>
           <div style={{ backgroundColor: "#fff", borderRadius: 12, padding: 28, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto" }}>
-            <h2 style={{ fontSize: "1rem", fontWeight: 700, color: G, marginBottom: 18 }}>Tambah Jobdesk</h2>
-            <form onSubmit={createTask} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <h2 style={{ fontSize: "1rem", fontWeight: 700, color: G, marginBottom: 18 }}>
+              {editingTask ? "Edit Jobdesk" : "Tambah Jobdesk"}
+            </h2>
+            <form onSubmit={submitTask} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label style={lbl}>Tugas *</label>
                 <input type="text" value={tf.title} onChange={(e) => setTf({ ...tf, title: e.target.value })} placeholder="cth. Buat poster feed" style={inp} required />
@@ -772,10 +955,79 @@ export default function EventDetailPage() {
                 <input type="url" value={tf.link} onChange={(e) => setTf({ ...tf, link: e.target.value })} placeholder="https://..." style={inp} />
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                <button type="button" onClick={() => setShowTaskModal(false)} style={{ ...btnS, flex: 1 }}>Batal</button>
-                <button type="submit" disabled={savingTask} style={{ ...btnP, flex: 1, opacity: savingTask ? 0.7 : 1 }}>{savingTask ? "Menyimpan..." : "Tambah"}</button>
+                <button type="button" onClick={() => { setShowTaskModal(false); setEditingTask(null); }} style={{ ...btnS, flex: 1 }}>Batal</button>
+                <button type="submit" disabled={savingTask} style={{ ...btnP, flex: 1, opacity: savingTask ? 0.7 : 1 }}>
+                  {savingTask ? "Menyimpan..." : editingTask ? "Simpan" : "Tambah"}
+                </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── TEMPLATE MODAL ── */}
+      {showTemplateModal && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowTemplateModal(false); }}>
+          <div style={{ backgroundColor: "#fff", borderRadius: 12, padding: 28, width: "100%", maxWidth: 620, maxHeight: "88vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+              <h2 style={{ fontSize: "1rem", fontWeight: 700, color: G }}>Template Jobdesk per Divisi</h2>
+              <button onClick={() => setShowTemplateModal(false)} style={{ background: "none", border: "none", color: "rgba(30,56,50,0.4)", fontSize: "1.2rem", cursor: "pointer", lineHeight: 1 }}>×</button>
+            </div>
+            <p style={{ fontSize: "0.78rem", color: "rgba(30,56,50,0.45)", marginBottom: 20 }}>
+              Centang jobdesk yang ingin ditambahkan. Yang sudah ada di list tidak dicentang otomatis.
+            </p>
+
+            {/* Select all / none */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+              <button
+                onClick={() => setTemplateSelections(Object.fromEntries(Object.keys(templateSelections).map((k) => [k, true])))}
+                style={{ ...btnS, fontSize: "0.75rem", padding: "5px 12px" }}
+              >Pilih Semua</button>
+              <button
+                onClick={() => setTemplateSelections(Object.fromEntries(Object.keys(templateSelections).map((k) => [k, false])))}
+                style={{ ...btnS, fontSize: "0.75rem", padding: "5px 12px" }}
+              >Hapus Semua</button>
+            </div>
+
+            {TASK_CATEGORIES.map((cat) => (
+              <div key={cat} style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "rgba(30,56,50,0.4)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+                  {CATEGORY_LABELS[cat]}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  {TASK_TEMPLATES[cat].map((item) => {
+                    const key = `${cat}::${item.title}`;
+                    const checked = templateSelections[key] ?? false;
+                    return (
+                      <label key={key} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 7, backgroundColor: checked ? "#f0fdf4" : C, cursor: "pointer", border: `1px solid ${checked ? "rgba(5,150,105,0.2)" : "transparent"}` }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => setTemplateSelections((prev) => ({ ...prev, [key]: e.target.checked }))}
+                          style={{ marginTop: 2, accentColor: G, flexShrink: 0 }}
+                        />
+                        <div>
+                          <div style={{ fontSize: "0.85rem", color: G, fontWeight: 500 }}>{item.title}</div>
+                          {item.notes && <div style={{ fontSize: "0.72rem", color: "rgba(30,56,50,0.45)", marginTop: 1 }}>{item.notes}</div>}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 4, position: "sticky", bottom: 0, backgroundColor: "#fff", paddingTop: 12, borderTop: "1px solid rgba(30,56,50,0.08)" }}>
+              <button onClick={() => setShowTemplateModal(false)} style={{ ...btnS, flex: 1 }}>Batal</button>
+              <button
+                onClick={loadTemplates}
+                disabled={loadingTemplates || selectedCount === 0}
+                style={{ ...btnP, flex: 2, opacity: (loadingTemplates || selectedCount === 0) ? 0.6 : 1 }}
+              >
+                {loadingTemplates ? "Menambahkan..." : `Tambahkan ${selectedCount} Jobdesk`}
+              </button>
+            </div>
           </div>
         </div>
       )}
