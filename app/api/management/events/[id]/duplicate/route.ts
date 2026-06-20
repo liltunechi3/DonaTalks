@@ -43,7 +43,7 @@ export async function POST(_req: NextRequest, { params }: { params: Params }) {
   const tasks = tasksRes.data || [];
   const team = teamRes.data || [];
 
-  const inserts: Promise<unknown>[] = [];
+  const inserts: PromiseLike<unknown>[] = [];
 
   if (tasks.length > 0) {
     inserts.push(
