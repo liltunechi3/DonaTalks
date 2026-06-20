@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -36,10 +36,11 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   done: { bg: "#d1fae5", color: "#065f46" },
 };
 
-function Spinner() {
+function Spinner({ small }: { small?: boolean }) {
+  const size = small ? 18 : 28;
   return (
     <svg
-      style={{ animation: "spin 1s linear infinite", height: 28, width: 28, display: "block", color: "#1E3832" }}
+      style={{ animation: "spin 1s linear infinite", height: size, width: size, display: "block", color: "#1E3832" }}
       viewBox="0 0 24 24"
       fill="none"
     >
@@ -68,7 +69,14 @@ export default function ManagementDashboard() {
     folder_link: "",
   });
   const [formError, setFormError] = useState<string | null>(null);
-  const [duplicating, setDuplicating] = useState<string | null>(null);
+
+  // Long press action sheet
+  const [actionEvent, setActionEvent] = useState<Event | null>(null);
+  const [pressing, setPressing] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didLongPress = useRef(false);
 
   async function fetchEvents() {
     setLoading(true);
@@ -92,21 +100,60 @@ export default function ManagementDashboard() {
   const pendingTasks = events.reduce((sum, e) => sum + (e.task_stats.total - e.task_stats.done), 0);
   const doneTasks = events.reduce((sum, e) => sum + e.task_stats.done, 0);
 
-  async function handleDuplicate(eventId: string, e: React.MouseEvent) {
-    e.stopPropagation();
-    setDuplicating(eventId);
+  const startPress = useCallback((event: Event) => {
+    didLongPress.current = false;
+    setPressing(event.id);
+    longPressTimer.current = setTimeout(() => {
+      didLongPress.current = true;
+      setPressing(null);
+      setActionEvent(event);
+    }, 500);
+  }, []);
+
+  const cancelPress = useCallback(() => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    setPressing(null);
+  }, []);
+
+  const handleCardClick = useCallback((event: Event) => {
+    if (didLongPress.current) return;
+    router.push(`/management/events/${event.id}`);
+  }, [router]);
+
+  async function handleDuplicate() {
+    if (!actionEvent) return;
+    setDuplicating(true);
     try {
-      const res = await fetch(`/api/management/events/${eventId}/duplicate`, { method: "POST" });
+      const res = await fetch(`/api/management/events/${actionEvent.id}/duplicate`, { method: "POST" });
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error || "Gagal menduplikat event");
       }
       const created = await res.json();
+      setActionEvent(null);
       router.push(`/management/events/${created.id}`);
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : "Terjadi kesalahan");
     } finally {
-      setDuplicating(null);
+      setDuplicating(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!actionEvent) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/management/events/${actionEvent.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Gagal menghapus event");
+      }
+      setActionEvent(null);
+      setEvents((prev) => prev.filter((e) => e.id !== actionEvent.id));
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Terjadi kesalahan");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -185,15 +232,16 @@ export default function ManagementDashboard() {
 
         {/* Events header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <h2 style={{ fontSize: "1.1rem", fontWeight: 600, color: "#1E3832" }}>Event</h2>
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <button
-              onClick={() => setShowModal(true)}
-              style={{ backgroundColor: "#1E3832", color: "#F5F0E8", border: "none", borderRadius: 7, padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}
-            >
-              + Tambah Event
-            </button>
+          <div>
+            <h2 style={{ fontSize: "1.1rem", fontWeight: 600, color: "#1E3832" }}>Event</h2>
+            <p style={{ fontSize: "0.75rem", color: "rgba(30,56,50,0.4)", marginTop: 2 }}>Tahan kartu untuk hapus atau duplikat</p>
           </div>
+          <button
+            onClick={() => setShowModal(true)}
+            style={{ backgroundColor: "#1E3832", color: "#F5F0E8", border: "none", borderRadius: 7, padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}
+          >
+            + Tambah Event
+          </button>
         </div>
 
         {/* Content */}
@@ -217,29 +265,37 @@ export default function ManagementDashboard() {
               const taskPct = event.task_stats.total > 0
                 ? Math.round((event.task_stats.done / event.task_stats.total) * 100)
                 : 0;
+              const isPressed = pressing === event.id;
               return (
                 <div
                   key={event.id}
-                  onClick={() => router.push(`/management/events/${event.id}`)}
-                  style={{ backgroundColor: "#fff", border: "1px solid rgba(30,56,50,0.1)", borderRadius: 10, padding: "20px", cursor: "pointer", transition: "box-shadow 0.15s", }}
-                  onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 4px 16px rgba(30,56,50,0.1)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}
+                  onClick={() => handleCardClick(event)}
+                  onMouseDown={() => startPress(event)}
+                  onMouseUp={cancelPress}
+                  onMouseLeave={cancelPress}
+                  onTouchStart={() => startPress(event)}
+                  onTouchEnd={cancelPress}
+                  onTouchCancel={cancelPress}
+                  onContextMenu={(e) => { e.preventDefault(); setActionEvent(event); }}
+                  style={{
+                    backgroundColor: "#fff",
+                    border: `1px solid ${isPressed ? "rgba(30,56,50,0.4)" : "rgba(30,56,50,0.1)"}`,
+                    borderRadius: 10,
+                    padding: "20px",
+                    cursor: "pointer",
+                    transition: "box-shadow 0.15s, transform 0.1s, opacity 0.1s",
+                    transform: isPressed ? "scale(0.97)" : "scale(1)",
+                    opacity: isPressed ? 0.85 : 1,
+                    userSelect: "none",
+                    WebkitUserSelect: "none",
+                  }}
+                  onMouseEnter={(e) => { if (!isPressed) e.currentTarget.style.boxShadow = "0 4px 16px rgba(30,56,50,0.1)"; }}
                 >
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
                     <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#1E3832", flex: 1, marginRight: 10 }}>{event.name}</h3>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                      <span style={{ ...statusStyle, fontSize: "0.72rem", fontWeight: 600, padding: "3px 8px", borderRadius: 5, whiteSpace: "nowrap" }}>
-                        {STATUS_LABELS[event.status] || event.status}
-                      </span>
-                      <button
-                        onClick={(e) => handleDuplicate(event.id, e)}
-                        disabled={duplicating === event.id}
-                        title="Duplikat event"
-                        style={{ background: "none", border: "1px solid rgba(30,56,50,0.2)", borderRadius: 5, padding: "3px 6px", cursor: duplicating === event.id ? "not-allowed" : "pointer", color: "rgba(30,56,50,0.5)", fontSize: "0.78rem", lineHeight: 1, opacity: duplicating === event.id ? 0.5 : 1 }}
-                      >
-                        {duplicating === event.id ? "..." : "⧉"}
-                      </button>
-                    </div>
+                    <span style={{ ...statusStyle, fontSize: "0.72rem", fontWeight: 600, padding: "3px 8px", borderRadius: 5, whiteSpace: "nowrap" }}>
+                      {STATUS_LABELS[event.status] || event.status}
+                    </span>
                   </div>
 
                   {event.theme && (
@@ -282,7 +338,58 @@ export default function ManagementDashboard() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Action sheet — long press */}
+      {actionEvent && (
+        <div
+          style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+          onClick={() => { if (!duplicating && !deleting) setActionEvent(null); }}
+        >
+          <div
+            style={{ backgroundColor: "#fff", borderRadius: "16px 16px 0 0", width: "100%", maxWidth: 480, padding: "20px 20px 32px", boxShadow: "0 -4px 24px rgba(0,0,0,0.15)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ width: 36, height: 4, backgroundColor: "rgba(30,56,50,0.15)", borderRadius: 2, margin: "0 auto 20px" }} />
+            <p style={{ fontSize: "0.78rem", color: "rgba(30,56,50,0.45)", marginBottom: 4, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em" }}>Event</p>
+            <p style={{ fontSize: "1rem", fontWeight: 700, color: "#1E3832", marginBottom: 20 }}>{actionEvent.name}</p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                onClick={handleDuplicate}
+                disabled={duplicating || deleting}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", backgroundColor: "#F5F0E8", border: "none", borderRadius: 10, cursor: duplicating ? "not-allowed" : "pointer", opacity: duplicating ? 0.6 : 1 }}
+              >
+                <span style={{ fontSize: "1.2rem" }}>⧉</span>
+                <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "#1E3832" }}>
+                  {duplicating ? "Menduplikat..." : "Duplikat Event"}
+                </span>
+                {duplicating && <span style={{ marginLeft: "auto" }}><Spinner small /></span>}
+              </button>
+
+              <button
+                onClick={handleDelete}
+                disabled={duplicating || deleting}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", backgroundColor: "#fee2e2", border: "none", borderRadius: 10, cursor: deleting ? "not-allowed" : "pointer", opacity: deleting ? 0.6 : 1 }}
+              >
+                <span style={{ fontSize: "1.2rem" }}>🗑</span>
+                <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "#991b1b" }}>
+                  {deleting ? "Menghapus..." : "Hapus Event"}
+                </span>
+                {deleting && <span style={{ marginLeft: "auto" }}><Spinner small /></span>}
+              </button>
+
+              <button
+                onClick={() => setActionEvent(null)}
+                disabled={duplicating || deleting}
+                style={{ padding: "13px 16px", backgroundColor: "transparent", border: "1px solid rgba(30,56,50,0.2)", borderRadius: 10, cursor: "pointer", fontSize: "0.9rem", color: "rgba(30,56,50,0.6)", fontWeight: 500 }}
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Event Modal */}
       {showModal && (
         <div
           style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}
