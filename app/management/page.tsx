@@ -21,7 +21,6 @@ interface Event {
   target_count: number | null;
   folder_link: string | null;
   created_at: string;
-  participant_count: number;
   task_stats: TaskStats;
 }
 
@@ -89,8 +88,8 @@ export default function ManagementDashboard() {
     fetchEvents();
   }, []);
 
-  const totalParticipants = events.reduce((sum, e) => sum + e.participant_count, 0);
   const pendingTasks = events.reduce((sum, e) => sum + (e.task_stats.total - e.task_stats.done), 0);
+  const doneTasks = events.reduce((sum, e) => sum + e.task_stats.done, 0);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -154,7 +153,7 @@ export default function ManagementDashboard() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 32 }}>
             {[
               { label: "Total Event", value: events.length },
-              { label: "Total Peserta", value: totalParticipants },
+              { label: "Task Selesai", value: doneTasks },
               { label: "Task Belum Selesai", value: pendingTasks },
             ].map((stat) => (
               <div key={stat.label} style={{ backgroundColor: "#fff", border: "1px solid rgba(30,56,50,0.1)", borderRadius: 10, padding: "20px 24px" }}>
@@ -169,9 +168,6 @@ export default function ManagementDashboard() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <h2 style={{ fontSize: "1.1rem", fontWeight: 600, color: "#1E3832" }}>Event</h2>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <Link href="/management/contacts" style={{ fontSize: "0.82rem", color: "#1E3832", textDecoration: "none", padding: "7px 14px", border: "1px solid rgba(30,56,50,0.3)", borderRadius: 7, fontWeight: 500 }}>
-              CRM Kontak
-            </Link>
             <button
               onClick={() => setShowModal(true)}
               style={{ backgroundColor: "#1E3832", color: "#F5F0E8", border: "none", borderRadius: 7, padding: "8px 16px", fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}
@@ -245,11 +241,11 @@ export default function ManagementDashboard() {
                     </div>
                   </div>
 
-                  {/* Participant count */}
-                  <div style={{ fontSize: "0.78rem", color: "rgba(30,56,50,0.5)" }}>
-                    Peserta: <strong style={{ color: "#1E3832" }}>{event.participant_count}</strong>
-                    {event.target_count ? <span> / {event.target_count}</span> : null}
-                  </div>
+                  {event.target_count && (
+                    <div style={{ fontSize: "0.78rem", color: "rgba(30,56,50,0.5)" }}>
+                      Target: <strong style={{ color: "#1E3832" }}>{event.target_count}</strong> peserta
+                    </div>
+                  )}
                 </div>
               );
             })}
