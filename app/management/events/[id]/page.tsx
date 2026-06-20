@@ -63,12 +63,6 @@ const TASK_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   done: { bg: "#d1fae5", color: "#065f46" },
 };
 
-const TASK_STATUS_LABELS: Record<string, string> = {
-  todo: "Todo",
-  in_progress: "In Progress",
-  done: "Done",
-};
-
 const EVENT_STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   planned: { bg: "#e5e7eb", color: "#374151" },
   on_progress: { bg: "#fef3c7", color: "#b45309" },
