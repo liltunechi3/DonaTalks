@@ -68,6 +68,7 @@ export default function ManagementDashboard() {
     folder_link: "",
   });
   const [formError, setFormError] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState<string | null>(null);
 
   async function fetchEvents() {
     setLoading(true);
@@ -90,6 +91,24 @@ export default function ManagementDashboard() {
 
   const pendingTasks = events.reduce((sum, e) => sum + (e.task_stats.total - e.task_stats.done), 0);
   const doneTasks = events.reduce((sum, e) => sum + e.task_stats.done, 0);
+
+  async function handleDuplicate(eventId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setDuplicating(eventId);
+    try {
+      const res = await fetch(`/api/management/events/${eventId}/duplicate`, { method: "POST" });
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Gagal menduplikat event");
+      }
+      const created = await res.json();
+      router.push(`/management/events/${created.id}`);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Terjadi kesalahan");
+    } finally {
+      setDuplicating(null);
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -208,9 +227,19 @@ export default function ManagementDashboard() {
                 >
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
                     <h3 style={{ fontSize: "1rem", fontWeight: 600, color: "#1E3832", flex: 1, marginRight: 10 }}>{event.name}</h3>
-                    <span style={{ ...statusStyle, fontSize: "0.72rem", fontWeight: 600, padding: "3px 8px", borderRadius: 5, whiteSpace: "nowrap" }}>
-                      {STATUS_LABELS[event.status] || event.status}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                      <span style={{ ...statusStyle, fontSize: "0.72rem", fontWeight: 600, padding: "3px 8px", borderRadius: 5, whiteSpace: "nowrap" }}>
+                        {STATUS_LABELS[event.status] || event.status}
+                      </span>
+                      <button
+                        onClick={(e) => handleDuplicate(event.id, e)}
+                        disabled={duplicating === event.id}
+                        title="Duplikat event"
+                        style={{ background: "none", border: "1px solid rgba(30,56,50,0.2)", borderRadius: 5, padding: "3px 6px", cursor: duplicating === event.id ? "not-allowed" : "pointer", color: "rgba(30,56,50,0.5)", fontSize: "0.78rem", lineHeight: 1, opacity: duplicating === event.id ? 0.5 : 1 }}
+                      >
+                        {duplicating === event.id ? "..." : "⧉"}
+                      </button>
+                    </div>
                   </div>
 
                   {event.theme && (
