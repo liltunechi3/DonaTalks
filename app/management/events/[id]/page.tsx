@@ -398,12 +398,25 @@ export default function EventDetailPage() {
   }
 
   async function loadTemplates() {
-    const toAdd: { title: string; category: string; notes?: string }[] = [];
+    // Build member lists per category role
+    const membersByRole: Record<string, string[]> = {};
+    for (const r of ROLES) {
+      membersByRole[r.value] = (event?.team || [])
+        .filter((m) => m.role === r.value)
+        .map((m) => m.member_name);
+    }
+    const randomPic = (cat: string) => {
+      const members = membersByRole[cat] || [];
+      if (!members.length) return null;
+      return members[Math.floor(Math.random() * members.length)];
+    };
+
+    const toAdd: { title: string; category: string; notes?: string; pic: string | null }[] = [];
     for (const [cat, items] of Object.entries(TASK_TEMPLATES)) {
       for (const item of items) {
         const key = `${cat}::${item.title}`;
         if (templateSelections[key]) {
-          toAdd.push({ title: item.title, category: cat, notes: item.notes });
+          toAdd.push({ title: item.title, category: cat, notes: item.notes, pic: randomPic(cat) });
         }
       }
     }
@@ -415,7 +428,7 @@ export default function EventDetailPage() {
         fetch("/api/management/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event_id: id, ...t, status: "todo", pic: null, deadline: null, link: null }),
+          body: JSON.stringify({ event_id: id, ...t, status: "todo", deadline: null, link: null }),
         }).then((r) => r.ok ? r.json() : null)
       )
     );
